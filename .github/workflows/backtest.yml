@@ -2,7 +2,7 @@ name: Daily Backtest Build
 
 on:
   push:
-    branches: ["main"]       # 當你 push 到 main 分支時執行
+    branches: ["main"]       # 推送到 main 分支時觸發
   schedule:
     - cron: '0 22 * * *'     # 每天 UTC 22:00 (台灣時間早上 06:00) 自動執行
 
@@ -22,8 +22,7 @@ jobs:
         with:
           python-version: '3.9'
 
-      # --- 關鍵步驟：安裝 TA-Lib C Library ---
-      # 因為 pip install TA-Lib 經常在沒有 C header 的情況下失敗
+      # --- 安裝 TA-Lib C Library (必須) ---
       - name: Install TA-Lib C Library
         run: |
           wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
@@ -39,10 +38,8 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # --- 執行回測程式 (只用 yfinance，不需要 Key) ---
       - name: Run Backtest Script
-        env:
-          # 如果你有 Alpha Vantage Key，可以在 GitHub Secrets 設定後由這裡讀取
-          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: |
           python main.py
 
@@ -51,4 +48,4 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public  # 將 main.py 產出的 public 資料夾發布
+          publish_dir: ./public
