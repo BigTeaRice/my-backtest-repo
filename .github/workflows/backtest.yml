@@ -1,0 +1,54 @@
+name: Daily Backtest Build
+
+on:
+  push:
+    branches: ["main"]       # 當你 push 到 main 分支時執行
+  schedule:
+    - cron: '0 22 * * *'     # 每天 UTC 22:00 (台灣時間早上 06:00) 自動執行
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # --- 關鍵步驟：安裝 TA-Lib C Library ---
+      # 因為 pip install TA-Lib 經常在沒有 C header 的情況下失敗
+      - name: Install TA-Lib C Library
+        run: |
+          wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+          tar -xzf ta-lib-0.4.0-src.tar.gz
+          cd ta-lib/
+          ./configure --prefix=/usr
+          make
+          sudo make install
+          cd ..
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Backtest Script
+        env:
+          # 如果你有 Alpha Vantage Key，可以在 GitHub Secrets 設定後由這裡讀取
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: |
+          python main.py
+
+      # --- 部署到 GitHub Pages ---
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public  # 將 main.py 產出的 public 資料夾發布
