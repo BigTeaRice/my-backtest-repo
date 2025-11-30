@@ -1,60 +1,154 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多策略回測報告中心</title>
-    <style>
-        body{font-family:'Inter',Arial,sans-serif;margin:0;padding:20px;background:#f4f7f9;}
-        .container{max-width:1200px;margin:0 auto;background:white;padding:20px;border-radius:12px;box-shadow:0 4px 8px rgba(0,0,0,0.1);}
-        .header-control{margin-bottom:25px;padding:15px;border-bottom:2px solid #e0e0e0;}
-        h2{color:#333;margin-top:0;font-weight:600;}
-        label{font-weight:bold;margin-right:10px;color:#555;}
-        select{padding:10px 15px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-right:20px;background:white;cursor:pointer;transition:border-color .3s;}
-        select:hover{border-color:#007bff;}
-        #report-container{width:100%;height:calc(100vh - 200px);border:none;border-radius:8px;margin-top:20px;background:white;box-shadow:inset 0 0 5px rgba(0,0,0,0.05);}
-        .note{color:#666;font-size:0.9em;margin-top:10px;}
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多策略回測報告中心</title>
+  <style>
+    body{font-family:'Inter',Arial,sans-serif;margin:0;padding:20px;background:#f4f7f9;}
+    .container{max-width:1200px;margin:0 auto;background:white;padding:25px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.08);}
+    .header-control{margin-bottom:25px;padding-bottom:15px;border-bottom:2px solid #e0e0e0;}
+    h2{margin-top:0;color:#333;}
+    label{font-weight:bold;margin-right:10px;color:#555;}
+    select,input{padding:10px 14px;font-size:15px;border:1px solid #ccc;border-radius:8px;margin-right:12px;}
+    button{padding:10px 18px;font-size:15px;border:none;border-radius:8px;background:#007bff;color:#fff;cursor:pointer;}
+    button:hover{background:#0056b3;}
+    #report-container{width:100%;height:calc(100vh - 200px);border:none;border-radius:8px;margin-top:20px;}
+    .stats{width:100%;border-collapse:collapse;font-size:14px;margin-top:30px;}
+    .stats th,.stats td{border:1px solid #ddd;padding:6px 8px;text-align:right;}
+    .stats th{background:#f8f9fa;text-align:center;}
+    .stats .left{text-align:left;}
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header-control">
-            <h2>多策略回測報告中心</h2>
-            <label for="strategy-select">選擇策略：</label>
-            <select id="strategy-select" onchange="loadReport()"><option value="RSI_Oscillator">RSI Oscillator</option>
+  <div class="container">
+    <div class="header-control">
+      <h2>多策略回測報告中心</h2>
+
+      <!-- 股票代号查询 -->
+      <div style="margin-bottom:15px;">
+        <label>股票代號查詢：</label>
+        <input id="symbol-input" type="text" placeholder="例：AAPL, ^HSI, TSLA">
+        <button onclick="fetchSymbol()">查詢</button>
+      </div>
+
+      <!-- 原有下拉 -->
+      <label for="strategy-select">選擇策略：</label>
+      <select id="strategy-select" onchange="loadReport()"><option value="RSI_Oscillator">RSI Oscillator</option>
 <option value="SMA_Crossover">SMA Crossover</option>
 <option value="MACD_Crossover">MACD Crossover</option></select>
 
-            <label for="ticker-select">選擇股票代號：</label>
-            <select id="ticker-select" onchange="loadReport()"><option value="^HSI">恆生指數 (HSI) (^HSI)</option>
+      <label for="ticker-select">選擇股票代號：</label>
+      <select id="ticker-select" onchange="loadReport()"><option value="^HSI">恆生指數 (HSI) (^HSI)</option>
 <option value="AAPL">Apple (AAPL) (AAPL)</option>
 <option value="TSLA">Tesla (TSLA) (TSLA)</option></select>
 
-            <p class="note">報告包含夏普指數 (Sharpe Ratio)、最大回撤 (Max. Drawdown) 等關鍵指標。</p>
-            <p class="note">資料來源：yfinance / 報告由 GitHub Actions 自動生成</p>
-        </div>
-
-        <iframe id="report-container" src="RSI_Oscillator_HSI.html" frameborder="0"></iframe>
-
-        <script>
-            const REPORTS_MAP = {"RSI_Oscillator": {"^HSI": "RSI_Oscillator_HSI.html", "AAPL": "RSI_Oscillator_AAPL.html", "TSLA": "RSI_Oscillator_TSLA.html"}, "SMA_Crossover": {"^HSI": "SMA_Crossover_HSI.html", "AAPL": "SMA_Crossover_AAPL.html", "TSLA": "SMA_Crossover_TSLA.html"}, "MACD_Crossover": {"^HSI": "MACD_Crossover_HSI.html", "AAPL": "MACD_Crossover_AAPL.html", "TSLA": "MACD_Crossover_TSLA.html"}};
-
-            window.onload = () => loadReport();
-
-            function loadReport() {
-                const strategy = document.getElementById('strategy-select').value;
-                const ticker   = document.getElementById('ticker-select').value;
-                const filename = REPORTS_MAP[strategy]?.[ticker];
-                const iframe   = document.getElementById('report-container');
-
-                if (filename) {
-                    iframe.src = filename;
-                } else {
-                    iframe.src = "about:blank";
-                    alert(`找不到 ${strategy} 策略與 ${ticker} 代號的報告，可能是數據不足或回測失敗。`);
-                }
-            }
-        </script>
+      <p class="note">報告包含夏普指數 (Sharpe Ratio)、最大回撤 (Max. Drawdown) 等關鍵指標。</p>
+      <p class="note">資料來源：yfinance / 報告由 GitHub Actions 自動生成</p>
     </div>
+
+    <!-- 回测报告 iframe -->
+    <iframe id="report-container" src="RSI_Oscillator_HSI.html" frameborder="0"></iframe>
+
+    <!-- 统计报告表格 -->
+    
+    <table class="stats">
+      <thead><tr><th class="left">指標</th><th>數值</th></tr></thead>
+      <tbody id="stats-body">
+        <tr><td class="left">Start</td><td id="st_Start">--</td></tr>
+        <tr><td class="left">End</td><td id="st_End">--</td></tr>
+        <tr><td class="left">Duration</td><td id="st_Duration">--</td></tr>
+        <tr><td class="left">Exposure Time [%]</td><td id="st_Exposure">--</td></tr>
+        <tr><td class="left">Equity Final [$]</td><td id="st_EquityFinal">--</td></tr>
+        <tr><td class="left">Equity Peak [$]</td><td id="st_EquityPeak">--</td></tr>
+        <tr><td class="left">Return [%]</td><td id="st_Return">--</td></tr>
+        <tr><td class="left">Buy & Hold Return [%]</td><td id="st_BuyHold">--</td></tr>
+        <tr><td class="left">Return (Ann.) [%]</td><td id="st_ReturnAnn">--</td></tr>
+        <tr><td class="left">Volatility (Ann.) [%]</td><td id="st_VolAnn">--</td></tr>
+        <tr><td class="left">Sharpe Ratio</td><td id="st_Sharpe">--</td></tr>
+        <tr><td class="left">Sortino Ratio</td><td id="st_Sortino">--</td></tr>
+        <tr><td class="left">Calmar Ratio</td><td id="st_Calmar">--</td></tr>
+        <tr><td class="left">Max. Drawdown [%]</td><td id="st_MaxDD">--</td></tr>
+        <tr><td class="left">Avg. Drawdown [%]</td><td id="st_AvgDD">--</td></tr>
+        <tr><td class="left">Max. Drawdown Duration</td><td id="st_MaxDDD">--</td></tr>
+        <tr><td class="left">Avg. Drawdown Duration</td><td id="st_AvgDDD">--</td></tr>
+        <tr><td class="left"># Trades</td><td id="st_Trades">--</td></tr>
+        <tr><td class="left">Win Rate [%]</td><td id="st_WinRate">--</td></tr>
+        <tr><td class="left">Best Trade [%]</td><td id="st_BestTrade">--</td></tr>
+        <tr><td class="left">Worst Trade [%]</td><td id="st_WorstTrade">--</td></tr>
+        <tr><td class="left">Avg. Trade [%]</td><td id="st_AvgTrade">--</td></tr>
+        <tr><td class="left">Max. Trade Duration</td><td id="st_MaxTradeDur">--</td></tr>
+        <tr><td class="left">Avg. Trade Duration</td><td id="st_AvgTradeDur">--</td></tr>
+        <tr><td class="left">Profit Factor</td><td id="st_ProfitFactor">--</td></tr>
+        <tr><td class="left">Expectancy [%]</td><td id="st_Expectancy">--</td></tr>
+        <tr><td class="left">SQN</td><td id="st_SQN">--</td></tr>
+      </tbody>
+    </table>
+    
+  </div>
+
+  <script>
+    const REPORTS_MAP = {"RSI_Oscillator": {"^HSI": "RSI_Oscillator_HSI.html", "^HSI_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 54.15807560137457, "Equity Final [$]": 94833.43767187501, "Equity Peak [$]": 113202.80762890624, "Return [%]": -5.166562328124987, "Buy & Hold Return [%]": -8.758141972233839, "Return (Ann.) [%]": -0.9145637682959395, "Volatility (Ann.) [%]": 18.21201280517354, "Sharpe Ratio": -0.05021761065510215, "Sortino Ratio": -0.0745643341422473, "Calmar Ratio": -0.019434942983994355, "Max. Drawdown [%]": -47.05770266725909, "Avg. Drawdown [%]": -7.407116434239813, "Max. Drawdown Duration": "1596 days 00:00:00", "Avg. Drawdown Duration": "212 days 00:00:00", "# Trades": 5, "Win Rate [%]": 60.0, "Best Trade [%]": 26.643661009723218, "Worst Trade [%]": -29.190610799630623, "Avg. Trade [%]": 0.3245418451880866, "Max. Trade Duration": "515 days 00:00:00", "Avg. Trade Duration": "233 days 00:00:00", "Profit Factor": 1.3564627082418963, "Expectancy [%]": 2.1307714003462075, "SQN": -0.08426516770865887}, "AAPL": "RSI_Oscillator_AAPL.html", "AAPL_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 36.87752355316285, "Equity Final [$]": 174429.93842698733, "Equity Peak [$]": 189013.7169426168, "Return [%]": 74.42993842698733, "Buy & Hold Return [%]": 262.0318077902936, "Return (Ann.) [%]": 9.894197957322891, "Volatility (Ann.) [%]": 25.1739218349858, "Sharpe Ratio": 0.39303363306595696, "Sortino Ratio": 0.6728660752843183, "Calmar Ratio": 0.3276097017790238, "Max. Drawdown [%]": -30.201175067753738, "Avg. Drawdown [%]": -6.328180256779599, "Max. Drawdown Duration": "460 days 00:00:00", "Avg. Drawdown Duration": "85 days 00:00:00", "# Trades": 6, "Win Rate [%]": 100.0, "Best Trade [%]": 28.719537829883368, "Worst Trade [%]": 4.067107812021886, "Avg. Trade [%]": 10.158196030688082, "Max. Trade Duration": "201 days 00:00:00", "Avg. Trade Duration": "131 days 00:00:00", "Profit Factor": NaN, "Expectancy [%]": 10.463628184491004, "SQN": 3.9022735260883232}, "TSLA": "RSI_Oscillator_TSLA.html", "TSLA_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 43.337819650067296, "Equity Final [$]": 399588.9141045379, "Equity Peak [$]": 449434.9096275176, "Return [%]": 299.58891410453793, "Buy & Hold Return [%]": 1027.673901391211, "Return (Ann.) [%]": 26.48041258788114, "Volatility (Ann.) [%]": 56.02114702758508, "Sharpe Ratio": 0.4726860122096761, "Sortino Ratio": 0.9959119094307035, "Calmar Ratio": 0.5026275421051661, "Max. Drawdown [%]": -52.68396649529519, "Avg. Drawdown [%]": -10.887207113293549, "Max. Drawdown Duration": "806 days 00:00:00", "Avg. Drawdown Duration": "69 days 00:00:00", "# Trades": 10, "Win Rate [%]": 90.0, "Best Trade [%]": 113.63377813427049, "Worst Trade [%]": -20.488541564171413, "Avg. Trade [%]": 26.11197429305312, "Max. Trade Duration": "319 days 00:00:00", "Avg. Trade Duration": "110 days 00:00:00", "Profit Factor": 15.711587756759695, "Expectancy [%]": 30.14189772293262, "SQN": 1.8217107858546064}}, "SMA_Crossover": {"^HSI": "SMA_Crossover_HSI.html", "^HSI_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 44.87972508591066, "Equity Final [$]": 120673.02655468755, "Equity Peak [$]": 130891.78219531252, "Return [%]": 20.673026554687546, "Buy & Hold Return [%]": 7.5978333746449565, "Return (Ann.) [%]": 3.3081420465146394, "Volatility (Ann.) [%]": 15.396408280839866, "Sharpe Ratio": 0.21486453114077733, "Sortino Ratio": 0.30780347217230547, "Calmar Ratio": 0.1259078055687867, "Max. Drawdown [%]": -26.274320575838452, "Avg. Drawdown [%]": -6.318320316350621, "Max. Drawdown Duration": "1325 days 00:00:00", "Avg. Drawdown Duration": "166 days 00:00:00", "# Trades": 19, "Win Rate [%]": 52.63157894736842, "Best Trade [%]": 17.908837182812952, "Worst Trade [%]": -11.035021281568147, "Avg. Trade [%]": 1.4350632322388535, "Max. Trade Duration": "167 days 00:00:00", "Avg. Trade Duration": "50 days 00:00:00", "Profit Factor": 1.8519720148524481, "Expectancy [%]": 1.701279954443209, "SQN": 0.8997051129441004}, "AAPL": "SMA_Crossover_AAPL.html", "AAPL_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 52.89367429340511, "Equity Final [$]": 224793.70852876565, "Equity Peak [$]": 224793.70852876565, "Return [%]": 124.79370852876566, "Buy & Hold Return [%]": 314.78500749461847, "Return (Ann.) [%]": 14.724594638321342, "Volatility (Ann.) [%]": 23.65054439166071, "Sharpe Ratio": 0.622590093254399, "Sortino Ratio": 1.081726844593416, "Calmar Ratio": 0.5035713419001177, "Max. Drawdown [%]": -29.24033481087559, "Avg. Drawdown [%]": -6.224570281270586, "Max. Drawdown Duration": "896 days 00:00:00", "Avg. Drawdown Duration": "83 days 00:00:00", "# Trades": 16, "Win Rate [%]": 43.75, "Best Trade [%]": 59.894241263086975, "Worst Trade [%]": -9.982198164778888, "Avg. Trade [%]": 3.758323911810768, "Max. Trade Duration": "192 days 00:00:00", "Avg. Trade Duration": "71 days 00:00:00", "Profit Factor": 2.6780443631297333, "Expectancy [%]": 4.922145975033214, "SQN": 0.920495099804016}, "TSLA": "SMA_Crossover_TSLA.html", "TSLA_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 57.40242261103634, "Equity Final [$]": 445029.3648552245, "Equity Peak [$]": 519270.15331689443, "Return [%]": 345.0293648552245, "Buy & Hold Return [%]": 1080.4453045925327, "Return (Ann.) [%]": 28.81177005285549, "Volatility (Ann.) [%]": 61.54906885708925, "Sharpe Ratio": 0.4681105756409333, "Sortino Ratio": 0.9653252791051431, "Calmar Ratio": 0.5027292196247249, "Max. Drawdown [%]": -57.3107130601296, "Avg. Drawdown [%]": -10.76495813892692, "Max. Drawdown Duration": "1138 days 00:00:00", "Avg. Drawdown Duration": "78 days 00:00:00", "# Trades": 15, "Win Rate [%]": 66.66666666666666, "Best Trade [%]": 158.76076146795236, "Worst Trade [%]": -24.91454031997017, "Avg. Trade [%]": 10.91323644480735, "Max. Trade Duration": "201 days 00:00:00", "Avg. Trade Duration": "82 days 00:00:00", "Profit Factor": 4.054516665391882, "Expectancy [%]": 16.587784192149268, "SQN": 1.3999539542922346}}, "MACD_Crossover": {"^HSI": "MACD_Crossover_HSI.html", "^HSI_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 51.340206185567006, "Equity Final [$]": 68267.8964355469, "Equity Peak [$]": 103722.11909765626, "Return [%]": -31.73210356445309, "Buy & Hold Return [%]": -6.339452273609939, "Return (Ann.) [%]": -6.397599843670932, "Volatility (Ann.) [%]": 13.569566054529442, "Sharpe Ratio": -0.4714667969456142, "Sortino Ratio": -0.6499250593837895, "Calmar Ratio": -0.1544784419935277, "Max. Drawdown [%]": -41.414191916429196, "Avg. Drawdown [%]": -12.514720737987533, "Max. Drawdown Duration": "1768 days 00:00:00", "Avg. Drawdown Duration": "414 days 00:00:00", "# Trades": 58, "Win Rate [%]": 29.310344827586203, "Best Trade [%]": 23.77090688328487, "Worst Trade [%]": -7.200228737933989, "Avg. Trade [%]": -0.4787995572738679, "Max. Trade Duration": "54 days 00:00:00", "Avg. Trade Duration": "18 days 00:00:00", "Profit Factor": 0.8128305329469364, "Expectancy [%]": -0.3561922768522926, "SQN": -0.658093776410413}, "AAPL": "MACD_Crossover_AAPL.html", "AAPL_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 53.83580080753701, "Equity Final [$]": 181608.87201002327, "Equity Peak [$]": 230563.6886124912, "Return [%]": 81.60887201002328, "Buy & Hold Return [%]": 259.968156846539, "Return (Ann.) [%]": 10.64841094394804, "Volatility (Ann.) [%]": 21.48444758149266, "Sharpe Ratio": 0.4956334531552441, "Sortino Ratio": 0.8089237525570412, "Calmar Ratio": 0.39072569207964325, "Max. Drawdown [%]": -27.252906987691837, "Avg. Drawdown [%]": -5.272837000830669, "Max. Drawdown Duration": "308 days 00:00:00", "Avg. Drawdown Duration": "58 days 00:00:00", "# Trades": 55, "Win Rate [%]": 49.09090909090909, "Best Trade [%]": 25.668638205515858, "Worst Trade [%]": -13.252199107186314, "Avg. Trade [%]": 1.4962524212762007, "Max. Trade Duration": "62 days 00:00:00", "Avg. Trade Duration": "20 days 00:00:00", "Profit Factor": 2.0496956381081564, "Expectancy [%]": 1.7307050181026649, "SQN": 1.4391561578871803}, "TSLA": "MACD_Crossover_TSLA.html", "TSLA_stats": {"Start": "2020-01-02 00:00:00", "End": "2025-11-28 00:00:00", "Duration": "2157 days 00:00:00", "Exposure Time [%]": 53.63391655450875, "Equity Final [$]": 940979.8136826934, "Equity Peak [$]": 992082.8479831696, "Return [%]": 840.9798136826934, "Buy & Hold Return [%]": 617.4203313850983, "Return (Ann.) [%]": 46.25221348632673, "Volatility (Ann.) [%]": 66.80066347360102, "Sharpe Ratio": 0.6923915284854193, "Sortino Ratio": 1.7095738684874535, "Calmar Ratio": 0.9788193183169858, "Max. Drawdown [%]": -47.25306562793868, "Avg. Drawdown [%]": -10.233690119336213, "Max. Drawdown Duration": "573 days 00:00:00", "Avg. Drawdown Duration": "63 days 00:00:00", "# Trades": 54, "Win Rate [%]": 44.44444444444444, "Best Trade [%]": 68.42322968208168, "Worst Trade [%]": -13.044665411745981, "Avg. Trade [%]": 4.657135311986149, "Max. Trade Duration": "73 days 00:00:00", "Avg. Trade Duration": "20 days 00:00:00", "Profit Factor": 2.9282517783246984, "Expectancy [%]": 5.984037524062577, "SQN": 2.053429776248747}}};
+
+    window.onload = () => loadReport();
+
+    function loadReport() {
+      const st = document.getElementById('strategy-select').value;
+      const tic = document.getElementById('ticker-select').value;
+      const filename = REPORTS_MAP[st]?.[tic];
+      const iframe = document.getElementById('report-container');
+      if (filename) {
+        iframe.src = filename;
+        updateStats(REPORTS_MAP[st][tic+'_stats'] || {});
+      } else {
+        iframe.src = "about:blank";
+        alert(`找不到 ${st} 策略與 ${tic} 代號的報告，可能是數據不足或回測失敗。`);
+      }
+    }
+
+    function fetchSymbol() {
+      const sym = document.getElementById('symbol-input').value.trim().toUpperCase();
+      if (!sym) return;
+      const sel = document.getElementById('ticker-select');
+      if ([...sel.options].some(o => o.value === sym)) {
+        sel.value = sym;
+        loadReport();
+      } else {
+        alert('該代號不在目前清單內，請確認輸入或先增加標的。');
+      }
+    }
+
+    function updateStats(s) {
+      const set = (k, v, fix=2) => document.getElementById('st_'+k).textContent =
+        (v == null ? '--' : (typeof v==='number' ? v.toFixed(fix) : v));
+      set('Start', s.Start);
+      set('End', s.End);
+      set('Duration', s.Duration);
+      set('Exposure', s['Exposure Time [%]']);
+      set('EquityFinal', s['Equity Final [$]'], 2);
+      set('EquityPeak', s['Equity Peak [$]'], 2);
+      set('Return', s['Return [%]']);
+      set('BuyHold', s['Buy & Hold Return [%]']);
+      set('ReturnAnn', s['Return (Ann.) [%]']);
+      set('VolAnn', s['Volatility (Ann.) [%]']);
+      set('Sharpe', s['Sharpe Ratio']);
+      set('Sortino', s['Sortino Ratio']);
+      set('Calmar', s['Calmar Ratio']);
+      set('MaxDD', s['Max. Drawdown [%]']);
+      set('AvgDD', s['Avg. Drawdown [%]']);
+      set('MaxDDD', s['Max. Drawdown Duration']);
+      set('AvgDDD', s['Avg. Drawdown Duration']);
+      set('Trades', s['# Trades'], 0);
+      set('WinRate', s['Win Rate [%]']);
+      set('BestTrade', s['Best Trade [%]']);
+      set('WorstTrade', s['Worst Trade [%]']);
+      set('AvgTrade', s['Avg. Trade [%]']);
+      set('MaxTradeDur', s['Max. Trade Duration']);
+      set('AvgTradeDur', s['Avg. Trade Duration']);
+      set('ProfitFactor', s['Profit Factor']);
+      set('Expectancy', s['Expectancy [%]']);
+      set('SQN', s['SQN']);
+    }
+  </script>
 </body>
 </html>
