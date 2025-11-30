@@ -42,7 +42,7 @@ class MacdCrossover(Strategy):
         elif crossover(self.sig, self.macd): self.position.close()
 
 # ------------------------------------------------------------------
-# 2. 数据抓取
+# 2. 数据抓取（纯 yfinance）
 # ------------------------------------------------------------------
 def get_data(ticker: str, start: str = "2020-01-01") -> pd.DataFrame:
     print(f"Fetching data for {ticker} from yfinance...")
@@ -66,16 +66,14 @@ if __name__ == "__main__":
     OUT_DIR = "public"
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    reports_map = {}   # {strategy: {ticker: filename}}
+    reports_map = {}   # {strategy: {ticker: filename, ticker+"_stats": {...}}}
 
     for Stg in STRATEGIES:
         stg_name = Stg.Name
         reports_map[stg_name] = {}
         for tic, desc in TICKERS.items():
             data = get_data(tic)
-            need = max(getattr(Stg, 'window', 0),
-                       getattr(Stg, 'slow', 0),
-                       getattr(Stg, 'signal', 0))
+            need = max(getattr(Stg, 'window', 0), getattr(Stg, 'slow', 0), getattr(Stg, 'signal', 0))
             if len(data) < need + 50:
                 print(f"Skip {tic}/{stg_name}: data too short")
                 continue
@@ -86,7 +84,7 @@ if __name__ == "__main__":
                 fname = f"{stg_name}_{safe}.html"
                 bt.plot(filename=os.path.join(OUT_DIR, fname), open_browser=False)
                 reports_map[stg_name][tic] = fname
-                # 把关键指标写进map，前端可直接用
+                # 关键指标入库
                 reports_map[stg_name][tic+"_stats"] = {
                     "Start": str(stats.get('Start', '')),
                     "End": str(stats.get('End', '')),
@@ -132,7 +130,6 @@ if __name__ == "__main__":
     reports_json = json.dumps(reports_map)
     default_report = reports_map.get(STRATEGIES[0].Name, {}).get(next(iter(TICKERS.keys())), "")
 
-    # 统计表格 HTML 片段
     stats_table = """
     <table class="stats">
       <thead><tr><th class="left">指標</th><th>數值</th></tr></thead>
@@ -225,33 +222,33 @@ if __name__ == "__main__":
 
     window.onload = () => loadReport();
 
-    function loadReport() {{
+    function loadReport() {
       const st = document.getElementById('strategy-select').value;
       const tic = document.getElementById('ticker-select').value;
       const filename = REPORTS_MAP[st]?.[tic];
       const iframe = document.getElementById('report-container');
-      if (filename) {{
+      if (filename) {
         iframe.src = filename;
-        updateStats(REPORTS_MAP[st][tic+'_stats'] || {{}});
-      }} else {{
+        updateStats(REPORTS_MAP[st][tic+'_stats'] || {});
+      } else {
         iframe.src = "about:blank";
-        alert(`找不到 ${{st}} 策略與 ${{tic}} 代號的報告，可能是數據不足或回測失敗。`);
-      }}
-    }}
+        alert(`找不到 ${st} 策略與 ${tic} 代號的報告，可能是數據不足或回測失敗。`);
+      }
+    }
 
-    function fetchSymbol() {{
+    function fetchSymbol() {
       const sym = document.getElementById('symbol-input').value.trim().toUpperCase();
       if (!sym) return;
       const sel = document.getElementById('ticker-select');
-      if ([...sel.options].some(o => o.value === sym)) {{
+      if ([...sel.options].some(o => o.value === sym)) {
         sel.value = sym;
         loadReport();
-      }} else {{
+      } else {
         alert('該代號不在目前清單內，請確認輸入或先增加標的。');
-      }}
-    }}
+      }
+    }
 
-    function updateStats(s) {{
+    function updateStats(s) {
       const set = (k, v, fix=2) => document.getElementById('st_'+k).textContent =
         (v == null ? '--' : (typeof v==='number' ? v.toFixed(fix) : v));
       set('Start', s.Start);
@@ -281,7 +278,7 @@ if __name__ == "__main__":
       set('ProfitFactor', s['Profit Factor']);
       set('Expectancy', s['Expectancy [%]']);
       set('SQN', s['SQN']);
-    }}
+    }
   </script>
 </body>
 </html>"""
