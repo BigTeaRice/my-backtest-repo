@@ -1,0 +1,8 @@
+yfinance
+pandas
+backtesting
+bokeh==3.2.1
+alpha_vantage
+# 注意：TA-Lib 在這裡寫只能裝 Python wrapper，
+# 系統層面的 C library 需要在 Action yml 中安裝 (見下文)。
+TA-Lib
