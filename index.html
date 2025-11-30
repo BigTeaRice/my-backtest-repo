@@ -1,33 +1,60 @@
-
-    <!DOCTYPE html>
-    <html lang="zh-Hant">
-    <head>
-        <meta charset="UTF-8">
-        <title>RSI 回測結果</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            #report-container { width: 100%; height: 100vh; border: none; }
-            .header-control { margin-bottom: 20px; }
-            select { padding: 10px; font-size: 16px; border-radius: 5px; }
-        </style>
-    </head>
-    <body>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多策略回測報告中心</title>
+    <style>
+        body{font-family:'Inter',Arial,sans-serif;margin:0;padding:20px;background:#f4f7f9;}
+        .container{max-width:1200px;margin:0 auto;background:white;padding:20px;border-radius:12px;box-shadow:0 4px 8px rgba(0,0,0,0.1);}
+        .header-control{margin-bottom:25px;padding:15px;border-bottom:2px solid #e0e0e0;}
+        h2{color:#333;margin-top:0;font-weight:600;}
+        label{font-weight:bold;margin-right:10px;color:#555;}
+        select{padding:10px 15px;font-size:16px;border:1px solid #ccc;border-radius:8px;margin-right:20px;background:white;cursor:pointer;transition:border-color .3s;}
+        select:hover{border-color:#007bff;}
+        #report-container{width:100%;height:calc(100vh - 200px);border:none;border-radius:8px;margin-top:20px;background:white;box-shadow:inset 0 0 5px rgba(0,0,0,0.05);}
+        .note{color:#666;font-size:0.9em;margin-top:10px;}
+    </style>
+</head>
+<body>
+    <div class="container">
         <div class="header-control">
-            <h2>RSI 策略回測報告</h2>
+            <h2>多策略回測報告中心</h2>
+            <label for="strategy-select">選擇策略：</label>
+            <select id="strategy-select" onchange="loadReport()"><option value="RSI_Oscillator">RSI Oscillator</option>
+<option value="SMA_Crossover">SMA Crossover</option>
+<option value="MACD_Crossover">MACD Crossover</option></select>
+
             <label for="ticker-select">選擇股票代號：</label>
-            <select id="ticker-select" onchange="loadReport(this.value)">
-                <option value="HSI.html">^HSI - Hang Seng Index (HSI)</option><option value="AAPL.html">AAPL - Apple Inc. (AAPL)</option><option value="GOOG.html">GOOG - Alphabet Inc. (GOOG)</option><option value="TSLA.html">TSLA - Tesla (TSLA)</option><option value="0005_HK.html">0005.HK - 滙豐控股 (HSBC HK)</option>
-            </select>
-            <p>資料來源: yfinance / 報告由 GitHub Actions 自動生成</p>
+            <select id="ticker-select" onchange="loadReport()"><option value="^HSI">恆生指數 (HSI) (^HSI)</option>
+<option value="AAPL">Apple (AAPL) (AAPL)</option>
+<option value="TSLA">Tesla (TSLA) (TSLA)</option></select>
+
+            <p class="note">報告包含夏普指數 (Sharpe Ratio)、最大回撤 (Max. Drawdown) 等關鍵指標。</p>
+            <p class="note">資料來源：yfinance / 報告由 GitHub Actions 自動生成</p>
         </div>
-        
-        <iframe id="report-container" src="HSI.html" frameborder="0"></iframe>
+
+        <iframe id="report-container" src="RSI_Oscillator_HSI.html" frameborder="0"></iframe>
 
         <script>
-            function loadReport(filename) {
-                document.getElementById('report-container').src = filename;
+            const REPORTS_MAP = {"RSI_Oscillator": {"^HSI": "RSI_Oscillator_HSI.html", "AAPL": "RSI_Oscillator_AAPL.html", "TSLA": "RSI_Oscillator_TSLA.html"}, "SMA_Crossover": {"^HSI": "SMA_Crossover_HSI.html", "AAPL": "SMA_Crossover_AAPL.html", "TSLA": "SMA_Crossover_TSLA.html"}, "MACD_Crossover": {"^HSI": "MACD_Crossover_HSI.html", "AAPL": "MACD_Crossover_AAPL.html", "TSLA": "MACD_Crossover_TSLA.html"}};
+
+            window.onload = () => loadReport();
+
+            function loadReport() {
+                const strategy = document.getElementById('strategy-select').value;
+                const ticker   = document.getElementById('ticker-select').value;
+                const filename = REPORTS_MAP[strategy]?.[ticker];
+                const iframe   = document.getElementById('report-container');
+
+                if (filename) {
+                    iframe.src = filename;
+                } else {
+                    iframe.src = "about:blank";
+                    alert(`找不到 ${strategy} 策略與 ${ticker} 代號的報告，可能是數據不足或回測失敗。`);
+                }
             }
         </script>
-    </body>
-    </html>
-    
+    </div>
+</body>
+</html>
