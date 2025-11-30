@@ -2,7 +2,7 @@ yfinance
 pandas
 backtesting
 bokeh==3.2.1
-TA-Lib
+TA-Lib 
 
 **`.github/workflows/backtest.yml` (不變):**
 (請參考上次回答的 `backtest.yml` 檔案，確保 TA-Lib 安裝和 `peaceiris/actions-gh-pages` 部署步驟存在。)
