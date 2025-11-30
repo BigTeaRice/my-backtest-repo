@@ -3,3 +3,16 @@ pandas
 backtesting
 bokeh==3.2.1
 TA-Lib
+
+**`.github/workflows/backtest.yml` (不變):**
+(請參考上次回答的 `backtest.yml` 檔案，確保 TA-Lib 安裝和 `peaceiris/actions-gh-pages` 部署步驟存在。)
+
+### 執行與結果
+
+當您將修改後的 `main.py` 推送到 GitHub 後，Action 會執行以下操作：
+
+1.  **安裝 TA-Lib**。
+2.  **執行 `main.py`**：對 3 個策略 x 5 個代號（共 15 個組合）進行回測。
+3.  **生成報告**：生成類似 `RSI_Oscillator_AAPL.html`, `SMA_Crossover_GOOG.html` 等多個獨立的 HTML 報告，並將它們和新的 `index.html` 一起部署到 GitHub Pages。
+
+現在，您的網頁將擁有兩個下拉選單，您可以自由選擇**策略**和**股票代號**，網頁下方的 `<iframe>` 會自動載入對應的回測報告，包含夏普指數等所有詳細指標。
