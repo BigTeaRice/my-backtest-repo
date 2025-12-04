@@ -1,25 +1,18 @@
-name: Daily Backtest and Analysis
+name: Daily Backtest
 
 on:
   push:
     branches: ["main"]
   schedule:
-    - cron: '0 22 * * *'  # 每天 UTC 22:00 (台湾时间早上 06:00)
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 22 * * *'  # 每天 UTC 22:00 (台湾时间 06:00)
+  workflow_dispatch:
 
-# 设置权限
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# 设置并发策略
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
-  # 运行回测
   run-backtest:
     runs-on: ubuntu-latest
     
@@ -33,64 +26,40 @@ jobs:
         python-version: "3.9"
         cache: 'pip'
     
-    - name: Install System Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget build-essential
-        
-        # 安装 TA-Lib
-        wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-        tar -xzf ta-lib-0.4.0-src.tar.gz
-        cd ta-lib/
-        ./configure --prefix=/usr
-        make
-        sudo make install
-        cd ..
-    
-    - name: Install Python Dependencies
+    - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install yfinance pandas numpy backtesting TA-Lib
+        pip install -r requirements.txt
     
-    - name: Create Output Directory
-      run: |
-        mkdir -p public/reports
-        mkdir -p public/data
-    
-    - name: Run Backtest
+    - name: Run backtest
       run: |
         echo "开始运行回测..."
         python main.py
         
-        # 检查是否生成了必要文件
+        # 检查生成的文件
+        echo "📁 生成的文件:"
+        find public -name "*.html" | head -10
+        echo ""
+        
         if [ -f "public/index.html" ]; then
-          echo "✅ 回测完成"
-          echo "报告数量: $(find public/reports -name '*.html' 2>/dev/null | wc -l || echo 0)"
+          echo "✅ 主页面生成成功"
         else
-          echo "❌ 回测失败"
+          echo "❌ 主页面生成失败"
           exit 1
         fi
     
-    - name: List Generated Files
-      if: success()
-      run: |
-        echo "📁 生成的文件列表:"
-        find public -type f -name "*.html" | head -20 || true
-        echo ""
-        echo "📊 CSV 报告:"
-        ls -la public/*.csv 2>/dev/null || echo "无CSV文件"
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
     
-    - name: Upload Pages Artifact
+    - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
         path: './public'
-  
-  # 部署到 GitHub Pages
+    
   deploy:
     needs: run-backtest
     if: success()
     
-    # 添加环境配置
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -106,53 +75,12 @@ jobs:
       id: deployment
       uses: actions/deploy-pages@v4
     
-    - name: Display Deployment URL
+    - name: Show deployment URL
       run: |
         echo "🌐 网站已部署: ${{ steps.deployment.outputs.page_url }}"
-        
-        # 创建状态文件
-        cat > deployment-status.md << EOF
-        # 部署状态
-        
-        - **状态**: 成功 ✅
-        - **时间**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-        - **URL**: [${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }})
-        - **工作流ID**: ${{ github.run_id }}
-        - **提交**: ${{ github.sha }}
-        
-        ## 访问说明
-        1. 点击上面的链接访问回测系统
-        2. 选择策略和股票代码查看回测结果
-        3. 查看性能指标和交易统计
-        
-        ## 下次运行
-        - 自动运行: 每天 UTC 22:00 (台湾时间 06:00)
-        - 手动触发: 在 Actions 页面点击 "Run workflow"
-        EOF
-        
-        echo "📄 状态文件已生成"
-    
-    - name: Generate Summary Report
-      run: |
-        echo "## 🚀 多市场回测系统 - 部署报告" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📊 部署状态" >> $GITHUB_STEP_SUMMARY
-        echo "- **状态**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
-        echo "- **时间**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-        echo "- **环境**: github-pages" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🌐 访问地址" >> $GITHUB_STEP_SUMMARY
-        echo "[${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📁 生成文件" >> $GITHUB_STEP_SUMMARY
-        echo "- 主页面: index.html" >> $GITHUB_STEP_SUMMARY
-        echo "- 策略对比: strategy_comparison.csv" >> $GITHUB_STEP_SUMMARY
-        echo "- 回测报告: reports/*.html" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### ⚠️ 注意事项" >> $GITHUB_STEP_SUMMARY
-        echo "1. 首次访问可能需要几分钟时间" >> $GITHUB_STEP_SUMMARY
-        echo "2. 数据源来自 Yahoo Finance" >> $GITHUB_STEP_SUMMARY
-        echo "3. 回测结果基于历史数据" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "---" >> $GITHUB_STEP_SUMMARY
-        echo "*自动生成于 $(date -u +'%Y-%m-%d %H:%M:%S UTC')*" >> $GITHUB_STEP_SUMMARY
+        echo ""
+        echo "📊 使用方法:"
+        echo "1. 打开上面的链接"
+        echo "2. 选择策略和标的"
+        echo "3. 点击'加载回测报告'"
+        echo "4. 查看图表和统计数据"
