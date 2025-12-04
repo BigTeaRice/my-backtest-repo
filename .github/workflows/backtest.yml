@@ -1,11 +1,11 @@
-name: Daily Backtest
+name: Daily Backtest and Deploy
 
 on:
   push:
     branches: ["main"]
   schedule:
     - cron: '0 22 * * *'  # 每天 UTC 22:00 (台湾时间 06:00)
-  workflow_dispatch:
+  workflow_dispatch:  # 允许手动触发
 
 permissions:
   contents: read
@@ -31,31 +31,35 @@ jobs:
         pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Create output directories
+      run: |
+        mkdir -p public/reports
+    
     - name: Run backtest
       run: |
-        echo "开始运行回测..."
+        echo "开始运行多策略回测..."
+        echo ""
         python main.py
         
-        # 检查生成的文件
+        echo ""
+        echo "检查生成的文件..."
         echo "📁 生成的文件:"
         find public -name "*.html" | head -10
         echo ""
         
         if [ -f "public/index.html" ]; then
           echo "✅ 主页面生成成功"
+          echo "📊 报告数量: $(find public/reports -name '*.html' | wc -l)"
         else
           echo "❌ 主页面生成失败"
           exit 1
         fi
     
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
-    
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
         path: './public'
-    
+  
   deploy:
     needs: run-backtest
     if: success()
@@ -75,12 +79,14 @@ jobs:
       id: deployment
       uses: actions/deploy-pages@v4
     
-    - name: Show deployment URL
+    - name: Show deployment info
       run: |
-        echo "🌐 网站已部署: ${{ steps.deployment.outputs.page_url }}"
+        echo "🌐 部署完成!"
+        echo "网站地址: ${{ steps.deployment.outputs.page_url }}"
         echo ""
-        echo "📊 使用方法:"
-        echo "1. 打开上面的链接"
-        echo "2. 选择策略和标的"
-        echo "3. 点击'加载回测报告'"
-        echo "4. 查看图表和统计数据"
+        echo "📋 使用方法:"
+        echo "1. 打开网站地址"
+        echo "2. 选择策略 (SMA/RSI/MACD/布林带/KDJ)"
+        echo "3. 选择股票标的"
+        echo "4. 点击'加载回测报告'"
+        echo "5. 查看图表和统计数据"
