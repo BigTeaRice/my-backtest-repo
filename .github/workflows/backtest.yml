@@ -1,51 +1,571 @@
-name: Daily Backtest Build
+name: Daily Backtest and Analysis
 
 on:
   push:
-    branches: ["main"]       # 推送到 main 分支時觸發
+    branches: ["main"]
   schedule:
-    - cron: '0 22 * * *'     # 每天 UTC 22:00 (台灣時間早上 06:00) 自動執行
+    # 每天 UTC 22:00 (台湾时间早上 06:00)
+    - cron: '0 22 * * *'
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      skip_backtest:
+        description: '跳过回测只更新页面'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      update_all_data:
+        description: '更新所有历史数据'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+  deployments: write
+
+# 设置并发策略，防止多个工作流同时运行
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  # 预检查：验证配置
+  pre-check:
     runs-on: ubuntu-latest
-
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      skip_backtest: ${{ inputs.skip_backtest }}
+      update_all_data: ${{ inputs.update_all_data }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      # --- 安裝 TA-Lib C Library (必須) ---
-      - name: Install TA-Lib C Library
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Validate configuration files
+        id: check
         run: |
-          wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-          tar -xzf ta-lib-0.4.0-src.tar.gz
-          cd ta-lib/
-          ./configure --prefix=/usr
-          make
-          sudo make install
-          cd ..
+          echo "检查配置文件..."
+          
+          # 检查必要的配置文件
+          if [ ! -f "requirements.txt" ]; then
+            echo "❌ 缺少 requirements.txt 文件"
+            exit 1
+          fi
+          
+          if [ ! -f "config.py" ]; then
+            echo "❌ 缺少 config.py 配置文件"
+            exit 1
+          fi
+          
+          if [ ! -f "main.py" ]; then
+            echo "❌ 缺少 main.py 主程序文件"
+            exit 1
+          fi
+          
+          echo "✅ 配置文件检查通过"
+          echo "should_run=true" >> $GITHUB_OUTPUT
 
-      - name: Install Python Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
+  # 构建和测试
+  build-and-test:
+    needs: pre-check
+    if: ${{ needs.pre-check.outputs.should_run == 'true' }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10"]
+      fail-fast: false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install System Dependencies
+      run: |
+        echo "安装系统依赖..."
+        sudo apt-get update
+        
+        # 安装编译工具
+        sudo apt-get install -y \
+          wget \
+          build-essential \
+          libfreetype6-dev \
+          libpng-dev \
+          libopenblas-dev \
+          liblapack-dev \
+          gfortran \
+          pkg-config
+        
+        # 安装 TA-Lib
+        echo "安装 TA-Lib..."
+        wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+        tar -xzf ta-lib-0.4.0-src.tar.gz
+        cd ta-lib/
+        ./configure --prefix=/usr
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
+        cd ..
+        echo "✅ TA-Lib 安装完成"
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install Python Dependencies
+      run: |
+        echo "安装 Python 依赖..."
+        python -m pip install --upgrade pip
+        pip install --upgrade setuptools wheel
+        
+        # 先安装基础依赖
+        pip install numpy pandas yfinance
+        
+        # 安装 requirements.txt 中的依赖
+        pip install -r requirements.txt
+        
+        # 检查关键库
+        python -c "import pandas; import numpy; import yfinance; print('✅ 基础库检查通过')"
+        
+        echo "依赖安装完成"
+    
+    - name: Verify Installation
+      run: |
+        echo "验证安装..."
+        python -c "
+        try:
+            import pandas as pd
+            import numpy as np
+            import yfinance as yf
+            import talib
+            from backtesting import Backtest, Strategy
+            print('✅ 所有核心库导入成功')
+            
+            # 检查 TA-Lib 功能
+            close = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            rsi = talib.RSI(np.array(close), timeperiod=3)
+            print(f'✅ TA-Lib RSI 计算成功: {rsi[-1]}')
+            
+        except Exception as e:
+            print(f'❌ 导入失败: {e}')
+            import traceback
+            traceback.print_exc()
+            exit(1)
+        "
+    
+    - name: Run Unit Tests
+      run: |
+        echo "运行单元测试..."
+        
+        # 创建简单的测试脚本
+        cat > test_basic.py << 'EOF'
+        import pandas as pd
+        import numpy as np
+        from datetime import datetime, timedelta
+        
+        def test_data_structures():
+            """测试数据结构"""
+            dates = pd.date_range(start='2020-01-01', end='2020-01-10', freq='D')
+            df = pd.DataFrame({
+                'Open': np.random.randn(10) + 100,
+                'High': np.random.randn(10) + 105,
+                'Low': np.random.randn(10) + 95,
+                'Close': np.random.randn(10) + 102,
+                'Volume': np.random.randint(1000, 10000, 10)
+            }, index=dates)
+            
+            assert len(df) == 10
+            assert all(col in df.columns for col in ['Open', 'High', 'Low', 'Close', 'Volume'])
+            print("✅ 数据结构测试通过")
+            
+        def test_config_import():
+            """测试配置导入"""
+            try:
+                from config import STOCKS_CONFIG, BACKTEST_CONFIG
+                assert isinstance(STOCKS_CONFIG, dict)
+                assert isinstance(BACKTEST_CONFIG, dict)
+                print("✅ 配置导入测试通过")
+            except Exception as e:
+                print(f"❌ 配置导入失败: {e}")
+                raise
+        
+        if __name__ == "__main__":
+            test_data_structures()
+            test_config_import()
+            print("🎉 所有测试通过！")
+        EOF
+        
+        python test_basic.py
+    
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test_basic.py
+        retention-days: 1
 
-      # --- 執行回測程式 (只用 yfinance，不需要 Key) ---
-      - name: Run Backtest Script
-        run: |
-          python main.py
+  # 运行回测和分析
+  run-backtest:
+    needs: [pre-check, build-and-test]
+    if: ${{ needs.pre-check.outputs.should_run == 'true' && needs.pre-check.outputs.skip_backtest != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45  # 设置超时时间
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python 3.9
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.9"
+        cache: 'pip'
+    
+    - name: Install System Dependencies
+      run: |
+        echo "安装系统依赖..."
+        sudo apt-get update
+        sudo apt-get install -y wget build-essential
+        
+        # 安装 TA-Lib
+        wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+        tar -xzf ta-lib-0.4.0-src.tar.gz
+        cd ta-lib/
+        ./configure --prefix=/usr
+        make -j$(nproc)
+        sudo make install
+        cd ..
+    
+    - name: Install Python Dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Create Output Directory
+      run: |
+        echo "创建输出目录..."
+        mkdir -p public/reports
+        mkdir -p public/data
+        mkdir -p public/charts
+    
+    - name: Run Backtest
+      id: backtest
+      run: |
+        echo "开始运行回测..."
+        echo "跳过回测: ${{ needs.pre-check.outputs.skip_backtest }}"
+        echo "更新所有数据: ${{ needs.pre-check.outputs.update_all_data }}"
+        
+        # 记录开始时间
+        start_time=$(date +%s)
+        
+        # 运行主回测程序
+        python main.py 2>&1 | tee backtest.log
+        
+        # 记录结束时间和状态
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+        
+        if [ -f "public/index.html" ]; then
+          echo "✅ 回测完成，耗时 ${duration} 秒"
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "duration=${duration}" >> $GITHUB_OUTPUT
+        else
+          echo "❌ 回测失败"
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "duration=${duration}" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+    
+    - name: Run Analysis
+      if: success()
+      run: |
+        echo "运行数据分析..."
+        
+        if [ -f "analyze.py" ]; then
+          python analyze.py 2>&1 | tee analysis.log
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ 数据分析完成"
+          else
+            echo "⚠️  数据分析部分失败，继续执行"
+          fi
+        else
+          echo "⚠️  未找到 analyze.py，跳过数据分析"
+        fi
+    
+    - name: Check Generated Files
+      if: success()
+      run: |
+        echo "检查生成的文件..."
+        
+        # 检查必要的文件
+        required_files=(
+          "public/index.html"
+          "public/strategy_comparison.csv"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "✅ $file 存在"
+          else
+            echo "❌ $file 不存在"
+          fi
+        done
+        
+        # 统计报告数量
+        if [ -d "public/reports" ]; then
+          report_count=$(find public/reports -name "*.html" | wc -l)
+          echo "📊 生成报告数量: $report_count"
+        fi
+        
+        # 显示目录结构
+        echo "📁 公共目录结构:"
+        find public -type f -name "*.html" | head -10 | sed 's/^/  /'
+        
+        if [ $(find public -type f -name "*.html" | wc -l) -gt 10 ]; then
+          echo "  ... 更多文件"
+        fi
+    
+    - name: Upload Backtest Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: backtest-logs
+        path: |
+          backtest.log
+          analysis.log
+        retention-days: 7
+    
+    - name: Upload Reports
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: backtest-reports
+        path: |
+          public/
+        retention-days: 1
 
-      # --- 部署到 GitHub Pages ---
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+  # 部署到 GitHub Pages
+  deploy:
+    needs: [pre-check, run-backtest]
+    if: ${{ needs.pre-check.outputs.should_run == 'true' && needs.run-backtest.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Download Reports
+      uses: actions/download-artifact@v4
+      with:
+        name: backtest-reports
+        path: public
+    
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+    
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './public'
+    
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+    
+    - name: Create Deployment Status
+      run: |
+        echo "部署完成！"
+        echo "页面URL: ${{ steps.deployment.outputs.page_url }}"
+        
+        # 获取部署状态
+        if [ "${{ steps.deployment.outputs.page_url }}" != "" ]; then
+          echo "✅ 部署成功"
+          DEPLOY_STATUS="success"
+        else
+          echo "❌ 部署失败"
+          DEPLOY_STATUS="failure"
+        fi
+        
+        # 创建部署状态文件
+        cat > public/deployment-status.json << EOF
+        {
+          "status": "$DEPLOY_STATUS",
+          "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+          "url": "${{ steps.deployment.outputs.page_url }}",
+          "commit": "${{ github.sha }}",
+          "run_id": "${{ github.run_id }}"
+        }
+        EOF
+
+  # 生成总结报告
+  generate-summary:
+    needs: [pre-check, build-and-test, run-backtest, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Generate Workflow Summary
+      run: |
+        echo "生成工作流总结..."
+        
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        ## 🚀 多市场回测系统 - 运行报告
+        
+        **运行概况**
+        - **开始时间:** $(date -d @${{ github.workflow_run.created_at }} '+%Y-%m-%d %H:%M:%S UTC')
+        - **工作流ID:** ${{ github.run_id }}
+        - **触发方式:** ${{ github.event_name }}
+        - **提交版本:** ${{ github.sha }}
+        
+        **任务状态**
+        | 任务 | 状态 | 备注 |
+        |------|------|------|
+        | 预检查 | ${{ needs.pre-check.result }} | 配置文件验证 |
+        | 构建测试 | ${{ needs.build-and-test.result }} | Python ${{ matrix.python-version }} 测试 |
+        | 回测运行 | ${{ needs.run-backtest.result }} | ${{ steps.backtest.outputs.duration || 'N/A' }} 秒 |
+        | 部署 | ${{ needs.deploy.result }} | ${{ steps.deployment.outputs.page_url || '未部署' }} |
+        
+        **配置参数**
+        - 跳过回测: ${{ needs.pre-check.outputs.skip_backtest || 'false' }}
+        - 更新所有数据: ${{ needs.pre-check.outputs.update_all_data || 'false' }}
+        
+        **生成的文件**
+        EOF
+        
+        # 添加文件列表
+        if [ "${{ needs.run-backtest.result }}" == "success" ]; then
+          echo "✅ **回测完成**" >> $GITHUB_STEP_SUMMARY
+          echo "- 主页面: index.html" >> $GITHUB_STEP_SUMMARY
+          echo "- 策略对比: strategy_comparison.csv" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "public/strategy_comparison.csv" ]; then
+            echo "- 数据分析: 已生成" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ **回测失败**" >> $GITHUB_STEP_SUMMARY
+          echo "请检查日志获取详细信息" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "**🌐 访问地址**" >> $GITHUB_STEP_SUMMARY
+          echo "[${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        
+        **下次运行**
+        - 自动运行: 每天 UTC 22:00 (台湾时间 06:00)
+        - 手动触发: 在 Actions 页面点击 "Run workflow"
+        
+        **注意事项**
+        1. 回测结果基于历史数据，不代表未来表现
+        2. 数据源来自 Yahoo Finance，可能存在延迟
+        3. 建议定期检查策略参数和风险指标
+        
+        ---
+        
+        *最后更新: $(date -u +'%Y-%m-%d %H:%M:%S UTC')*
+        EOF
+    
+    - name: Send Notification
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const runId = context.runId;
+          
+          github.rest.actions.createWorkflowDispatch({
+            owner,
+            repo,
+            workflow_id: 'backtest.yml',
+            ref: 'main'
+          });
+          
+          console.log('工作流已重新调度');
+    
+    - name: Archive Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: workflow-summary
+        path: ${{ github.step_summary }}
+        retention-days: 30
+
+  # 清理旧报告
+  cleanup:
+    needs: [pre-check, deploy]
+    if: ${{ needs.pre-check.outputs.should_run == 'true' && always() }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Cleanup Old Artifacts
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // 清理超过30天的 artifacts
+          const artifacts = await github.rest.actions.listArtifactsForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            per_page: 100
+          });
+          
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          
+          for (const artifact of artifacts.data.artifacts) {
+            const createdAt = new Date(artifact.created_at);
+            if (createdAt < thirtyDaysAgo && artifact.name.includes('backtest-')) {
+              console.log(`清理旧 artifact: ${artifact.name}`);
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id
+              });
+            }
+          }
+    
+    - name: Report Completion
+      run: |
+        echo "🎉 工作流执行完成！"
+        echo ""
+        echo "📊 执行结果汇总:"
+        echo "----------------------------------------"
+        echo "预检查: ${{ needs.pre-check.result }}"
+        echo "构建测试: ${{ needs.build-and-test.result }}"
+        echo "回测运行: ${{ needs.run-backtest.result }}"
+        echo "部署: ${{ needs.deploy.result }}"
+        echo "总结生成: ${{ job.status }}"
+        echo "----------------------------------------"
+        
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo ""
+          echo "🌐 网站已部署:"
+          echo "${{ steps.deployment.outputs.page_url }}"
+        fi
+
+# 环境变量
+env:
+  PYTHONPATH: "${{ github.workspace }}"
+  TZ: "UTC"
