@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多策略回测系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .strategy-card {
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .strategy-card.active {
+            border-color: #4CAF50;
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+        .strategy-card:hover {
+            border-color: #4CAF50;
+        }
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .positive {
+            color: #4CAF50;
+        }
+        .negative {
+            color: #f44336;
+        }
+        .report-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 50px;
+        }
+        .loading.active {
+            display: block;
+        }
+        .btn-custom {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        .btn-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line me-2"></i>
+                多策略回测系统
+            </a>
+            <span class="navbar-text">
+                <i class="fas fa-sync-alt me-1"></i>
+                最后更新: <span id="last-update">加载中...</span>
+            </span>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <!-- 系统标题 -->
+        <div class="text-center mb-5">
+            <h1 class="text-white mb-3">支持五种技术指标策略的回测系统</h1>
+            <p class="text-light lead">SMA双均线 | RSI超买超卖 | MACD交叉 | 布林带 | KDI随机指标</p>
+        </div>
+
+        <div class="row">
+            <!-- 左侧配置面板 -->
+            <div class="col-md-4">
+                <div class="card p-4 mb-4">
+                    <h4 class="mb-4"><i class="fas fa-cog me-2"></i>回测配置</h4>
+                    
+                    <!-- 策略选择 -->
+                    <div class="mb-4">
+                        <label class="form-label"><strong>选择策略：</strong></label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="card strategy-card p-3 text-center" data-strategy="SMA" onclick="selectStrategy('SMA')">
+                                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                                    <h6>SMA策略</h6>
+                                    <small class="text-muted">双均线交叉</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="card strategy-card p-3 text-center" data-strategy="RSI" onclick="selectStrategy('RSI')">
+                                    <i class="fas fa-exchange-alt fa-2x mb-2"></i>
+                                    <h6>RSI策略</h6>
+                                    <small class="text-muted">超买超卖</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="card strategy-card p-3 text-center" data-strategy="MACD" onclick="selectStrategy('MACD')">
+                                    <i class="fas fa-crosshairs fa-2x mb-2"></i>
+                                    <h6>MACD策略</h6>
+                                    <small class="text-muted">交叉信号</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="card strategy-card p-3 text-center" data-strategy="Bollinger" onclick="selectStrategy('Bollinger')">
+                                    <i class="fas fa-expand-alt fa-2x mb-2"></i>
+                                    <h6>布林带策略</h6>
+                                    <small class="text-muted">通道突破</small>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="card strategy-card p-3 text-center" data-strategy="KDI" onclick="selectStrategy('KDI')">
+                                    <i class="fas fa-random fa-2x mb-2"></i>
+                                    <h6>KDI策略</h6>
+                                    <small class="text-muted">随机指标</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 标的选择 -->
+                    <div class="mb-4">
+                        <label class="form-label"><strong>选择标的：</strong></label>
+                        <select class="form-select" id="symbol-select">
+                            <option value="HSI">恒生指数 (HSI)</option>
+                            <option value="SPY">标普500 (SPY)</option>
+                            <option value="BTC-USD">比特币 (BTC-USD)</option>
+                            <option value="AAPL">苹果公司 (AAPL)</option>
+                            <option value="000001.SS">上证指数 (000001.SS)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 回测参数 -->
+                    <div class="mb-4">
+                        <label class="form-label"><strong>回测期间：</strong></label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="date" class="form-control" id="start-date" value="2020-01-01">
+                            </div>
+                            <div class="col-6">
+                                <input type="date" class="form-control" id="end-date" value="2023-12-31">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label"><strong>初始资金：</strong></label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="initial-capital" value="100000" step="10000">
+                        </div>
+                    </div>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-custom btn-lg" onclick="runBacktest()">
+                            <i class="fas fa-play me-2"></i>运行回测
+                        </button>
+                        <button class="btn btn-outline-primary btn-lg" onclick="loadLatestReport()">
+                            <i class="fas fa-chart-bar me-2"></i>加载回测报告
+                        </button>
+                        <button class="btn btn-outline-success btn-lg" onclick="downloadFullReport()">
+                            <i class="fas fa-download me-2"></i>下载完整报告
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 历史报告 -->
+                <div class="card p-4">
+                    <h5><i class="fas fa-history me-2"></i>历史报告</h5>
+                    <div class="report-list" id="report-list">
+                        <!-- 动态加载报告列表 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧结果展示 -->
+            <div class="col-md-8">
+                <!-- 加载动画 -->
+                <div class="loading" id="loading">
+                    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <h4 class="mt-3">回测运行中...</h4>
+                    <p>这可能需要几秒钟时间</p>
+                </div>
+                
+                <!-- 性能指标 -->
+                <div class="card p-4 mb-4" id="performance-metrics" style="display: none;">
+                    <h4 class="mb-4"><i class="fas fa-tachometer-alt me-2"></i>性能指标</h4>
+                    <div class="row text-center">
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">标的名称</div>
+                                <div class="metric-value" id="metric-symbol">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">数据期间</div>
+                                <div class="metric-value" id="metric-period">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">数据条数</div>
+                                <div class="metric-value" id="metric-count">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">初始资金</div>
+                                <div class="metric-value" id="metric-initial">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">最终净值</div>
+                                <div class="metric-value" id="metric-final">-</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card p-3">
+                                <div class="text-muted">总收益率</div>
+                                <div class="metric-value" id="metric-return">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 详细指标 -->
+                    <div class="mt-4">
+                        <h5>详细统计</h5>
+                        <table class="table table-hover">
+                            <tbody>
+                                <tr>
+                                    <td>年化收益率</td>
+                                    <td id="metric-annual">-</td>
+                                </tr>
+                                <tr>
+                                    <td>夏普比率</td>
+                                    <td id="metric-sharpe">-</td>
+                                </tr>
+                                <tr>
+                                    <td>最大回撤</td>
+                                    <td id="metric-drawdown">-</td>
+                                </tr>
+                                <tr>
+                                    <td>波动率</td>
+                                    <td id="metric-volatility">-</td>
+                                </tr>
+                                <tr>
+                                    <td>胜率</td>
+                                    <td id="metric-winrate">-</td>
+                                </tr>
+                                <tr>
+                                    <td>总交易次数</td>
+                                    <td id="metric-trades">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 图表区域 -->
+                <div class="chart-container mb-4" id="chart-container" style="display: none;">
+                    <h5><i class="fas fa-chart-area me-2"></i>净值曲线</h5>
+                    <canvas id="equityChart" height="150"></canvas>
+                </div>
+                
+                <!-- 策略对比 -->
+                <div class="card p-4" id="strategy-comparison">
+                    <h5><i class="fas fa-balance-scale me-2"></i>策略对比</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>策略</th>
+                                    <th>总收益率</th>
+                                    <th>年化收益率</th>
+                                    <th>夏普比率</th>
+                                    <th>最大回撤</th>
+                                    <th>胜率</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- 动态加载对比数据 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted small">数据来源: strategy_comparison.csv</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        // 默认选择SMA策略
+        let currentStrategy = 'SMA';
+        let equityChart = null;
+        
+        // 页面加载完成
+        document.addEventListener('DOMContentLoaded', function() {
+            selectStrategy('SMA');
+            loadReportList();
+            loadStrategyComparison();
+            updateLastUpdate();
+        });
+        
+        // 选择策略
+        function selectStrategy(strategy) {
+            currentStrategy = strategy;
+            
+            // 更新卡片状态
+            document.querySelectorAll('.strategy-card').forEach(card => {
+                card.classList.remove('active');
+                if (card.dataset.strategy === strategy) {
+                    card.classList.add('active');
+                }
+            });
+        }
+        
+        // 运行回测
+        async function runBacktest() {
+            const strategy = currentStrategy;
+            const symbol = document.getElementById('symbol-select').value;
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            const capital = document.getElementById('initial-capital').value;
+            
+            // 显示加载动画
+            showLoading(true);
+            
+            try {
+                // 模拟API调用（实际项目中替换为真实API）
+                const response = await simulateBacktestAPI(strategy, symbol, startDate, endDate, capital);
+                
+                // 更新性能指标
+                updatePerformanceMetrics(response);
+                
+                // 更新图表
+                updateEquityChart(response.equity_curve);
+                
+                // 保存到历史报告
+                saveToReportList(response);
+                
+                // 隐藏加载动画
+                showLoading(false);
+                
+            } catch (error) {
+                console.error('回测失败:', error);
+                alert('回测运行失败: ' + error.message);
+                showLoading(false);
+            }
+        }
+        
+        // 模拟API调用
+        async function simulateBacktestAPI(strategy, symbol, startDate, endDate, capital) {
+            // 模拟延迟
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // 生成模拟数据
+            const mockData = generateMockResults(strategy, symbol, startDate, endDate, capital);
+            
+            return mockData;
+        }
+        
+        // 生成模拟结果
+        function generateMockResults(strategy, symbol, startDate, endDate, capital) {
+            capital = parseFloat(capital);
+            
+            // 根据策略生成不同的收益率
+            const strategyReturns = {
+                'SMA': 0.25,      // 25%
+                'RSI': 0.18,      // 18%
+                'MACD': 0.22,     // 22%
+                'Bollinger': 0.15, // 15%
+                'KDI': 0.12       // 12%
+            };
+            
+            const totalReturn = strategyReturns[strategy] || 0.20;
+            const finalValue = capital * (1 + totalReturn);
+            
+            // 生成模拟净值曲线
+            const equity_curve = [];
+            let currentValue = capital;
+            for (let i = 0; i < 100; i++) {
+                const randomChange = (Math.random() - 0.5) * 0.02;
+                currentValue *= (1 + randomChange + totalReturn / 100);
+                equity_curve.push(currentValue);
+            }
+            
+            return {
+                strategy: strategy,
+                symbol: symbol,
+                period: `${startDate} 至 ${endDate}`,
+                data_count: Math.floor(Math.random() * 1000) + 500,
+                initial_capital: capital,
+                final_value: finalValue,
+                total_return: totalReturn,
+                annual_return: totalReturn / 3, // 假设3年
+                sharpe_ratio: Math.random() * 2 + 0.5,
+                max_drawdown: -(Math.random() * 0.15 + 0.05),
+                volatility: Math.random() * 0.2 + 0.1,
+                win_rate: Math.random() * 0.4 + 0.4,
+                total_trades: Math.floor(Math.random() * 50) + 10,
+                equity_curve: equity_curve,
+                timestamp: new Date().toISOString()
+            };
+        }
+        
+        // 更新性能指标
+        function updatePerformanceMetrics(data) {
+            document.getElementById('performance-metrics').style.display = 'block';
+            document.getElementById('chart-container').style.display = 'block';
+            
+            // 更新基础指标
+            document.getElementById('metric-symbol').textContent = data.symbol;
+            document.getElementById('metric-period').textContent = data.period;
+            document.getElementById('metric-count').textContent = data.data_count.toLocaleString();
+            document.getElementById('metric-initial').textContent = '¥' + data.initial_capital.toLocaleString();
+            document.getElementById('metric-final').textContent = '¥' + data.final_value.toLocaleString();
+            
+            // 收益率（带颜色）
+            const returnElement = document.getElementById('metric-return');
+            returnElement.textContent = (data.total_return * 100).toFixed(2) + '%';
+            returnElement.className = 'metric-value ' + (data.total_return >= 0 ? 'positive' : 'negative');
+            
+            // 详细指标
+            document.getElementById('metric-annual').textContent = (data.annual_return * 100).toFixed(2) + '%';
+            document.getElementById('metric-sharpe').textContent = data.sharpe_ratio.toFixed(2);
+            document.getElementById('metric-drawdown').textContent = (data.max_drawdown * 100).toFixed(2) + '%';
+            document.getElementById('metric-volatility').textContent = (data.volatility * 100).toFixed(2) + '%';
+            document.getElementById('metric-winrate').textContent = (data.win_rate * 100).toFixed(2) + '%';
+            document.getElementById('metric-trades').textContent = data.total_trades;
+        }
+        
+        // 更新净值曲线图表
+        function updateEquityChart(equityData) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            
+            // 销毁旧图表
+            if (equityChart) {
+                equityChart.destroy();
+            }
+            
+            // 创建新图表
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: equityData.length}, (_, i) => `Day ${i + 1}`),
+                    datasets: [{
+                        label: '净值曲线',
+                        data: equityData,
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 加载最新报告
+        function loadLatestReport() {
+            // 模拟加载最新报告
+            const mockData = generateMockResults(currentStrategy, 
+                document.getElementById('symbol-select').value,
+                '2020-01-01',
+                '2023-12-31',
+                100000);
+            
+            updatePerformanceMetrics(mockData);
+            updateEquityChart(mockData.equity_curve);
+        }
+        
+        // 下载完整报告
+        function downloadFullReport() {
+            alert('完整报告下载功能需要后端支持\n在实际系统中，这里会生成PDF报告');
+        }
+        
+        // 加载报告列表
+        function loadReportList() {
+            const reportList = document.getElementById('report-list');
+            
+            // 模拟报告数据
+            const reports = [
+                {name: 'SMA_HSI_20231205_143022.html', date: '2023-12-05 14:30:22', strategy: 'SMA'},
+                {name: 'RSI_SPY_20231204_093015.html', date: '2023-12-04 09:30:15', strategy: 'RSI'},
+                {name: 'MACD_BTC-USD_20231203_162245.html', date: '2023-12-03 16:22:45', strategy: 'MACD'},
+                {name: 'Bollinger_AAPL_20231202_110532.html', date: '2023-12-02 11:05:32', strategy: 'Bollinger'},
+                {name: 'KDI_000001.SS_20231201_084512.html', date: '2023-12-01 08:45:12', strategy: 'KDI'}
+            ];
+            
+            reportList.innerHTML = reports.map(report => `
+                <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                    <div>
+                        <i class="fas fa-file-alt me-2"></i>
+                        <span class="small">${report.strategy} - ${report.date}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadReport('${report.name}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        // 保存到报告列表
+        function saveToReportList(data) {
+            const reportList = document.getElementById('report-list');
+            const date = new Date(data.timestamp).toLocaleString('zh-CN');
+            
+            const reportItem = document.createElement('div');
+            reportItem.className = 'd-flex justify-content-between align-items-center p-2 border-bottom';
+            reportItem.innerHTML = `
+                <div>
+                    <i class="fas fa-file-alt me-2"></i>
+                    <span class="small">${data.strategy} - ${date}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadReport('${data.strategy}_${data.symbol}_${data.timestamp}.html')">
+                    <i class="fas fa-eye"></i>
+                </button>
+            `;
+            
+            reportList.prepend(reportItem);
+        }
+        
+        // 加载策略对比数据
+        async function loadStrategyComparison() {
+            try {
+                // 尝试加载CSV文件
+                const response = await fetch('strategy_comparison.csv');
+                if (response.ok) {
+                    const csvText = await response.text();
+                    updateComparisonTable(parseCSV(csvText));
+                } else {
+                    // 如果没有CSV文件，使用模拟数据
+                    showMockComparison();
+                }
+            } catch (error) {
+                console.error('加载对比数据失败:', error);
+                showMockComparison();
+            }
+        }
+        
+        // 解析CSV
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n');
+            const headers = lines[0].split(',');
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim()) {
+                    const values = lines[i].split(',');
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        row[header.trim()] = values[index] ? values[index].trim() : '';
+                    });
+                    data.push(row);
+                }
+            }
+            
+            return data;
+        }
+        
+        // 更新对比表格
+        function updateComparisonTable(data) {
+            const tbody = document.querySelector('#comparison-table tbody');
+            
+            if (data.length === 0) {
+                showMockComparison();
+                return;
+            }
+            
+            tbody.innerHTML = data.map(row => `
+                <tr>
+                    <td><strong>${row.strategy || row.Strategy}</strong> - ${row.symbol || row.Symbol}</td>
+                    <td class="${parseFloat(row.total_return || row['total_return']) >= 0 ? 'positive' : 'negative'}">
+                        ${(parseFloat(row.total_return || row['total_return']) * 100).toFixed(2)}%
+                    </td>
+                    <td>${(parseFloat(row.annual_return || row['annual_return']) * 100).toFixed(2)}%</td>
+                    <td>${parseFloat(row.sharpe_ratio || row['sharpe_ratio']).toFixed(2)}</td>
+                    <td class="negative">${(parseFloat(row.max_drawdown || row['max_drawdown']) * 100).toFixed(2)}%</td>
+                    <td>${(parseFloat(row.win_rate || row['win_rate']) * 100).toFixed(2)}%</td>
+                </tr>
+            `).join('');
+        }
+        
+        // 显示模拟对比数据
+        function showMockComparison() {
+            const mockData = [
+                {strategy: 'SMA', symbol: 'HSI', total_return: 0.25, annual_return: 0.08, sharpe_ratio: 1.2, max_drawdown: -0.12, win_rate: 0.55},
+                {strategy: 'RSI', symbol: 'SPY', total_return: 0.18, annual_return: 0.06, sharpe_ratio: 0.9, max_drawdown: -0.15, win_rate: 0.48},
+                {strategy: 'MACD', symbol: 'BTC-USD', total_return: 0.22, annual_return: 0.07, sharpe_ratio: 1.1, max_drawdown: -0.18, win_rate: 0.52},
+                {strategy: 'Bollinger', symbol: 'AAPL', total_return: 0.15, annual_return: 0.05, sharpe_ratio: 0.8, max_drawdown: -0.10, win_rate: 0.45},
+                {strategy: 'KDI', symbol: '000001.SS', total_return: 0.12, annual_return: 0.04, sharpe_ratio: 0.7, max_drawdown: -0.08, win_rate: 0.42}
+            ];
+            
+            updateComparisonTable(mockData);
+        }
+        
+        // 更新最后更新时间
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('last-update').textContent = 
+                now.toLocaleDateString('zh-CN') + ' ' + now.toLocaleTimeString('zh-CN');
+        }
+        
+        // 显示/隐藏加载动画
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('active', show);
+            
+            if (!show) {
+                document.getElementById('performance-metrics').style.display = 'block';
+                document.getElementById('chart-container').style.display = 'block';
+            }
+        }
+        
+        // 定时更新最后更新时间
+        setInterval(updateLastUpdate, 60000); // 每分钟更新一次
+    </script>
+</body>
+</html>
