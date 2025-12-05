@@ -1,17 +1,5 @@
-# 核心依赖（精简版）
 yfinance>=0.2.28
 pandas>=2.0.0
 numpy>=1.24.0
-backtesting==0.3.3
-plotly>=5.15.0
-ta>=0.10.2
-
-# 基础工具
-python-dotenv>=1.0.0
-requests>=2.31.0
-
-# 报告生成
-matplotlib>=3.7.0
-
-# 测试工具
-pytest>=7.4.0
+backtesting>=0.3.3
+bokeh>=3.2.1
