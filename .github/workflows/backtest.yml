@@ -1,193 +1,92 @@
-name: Daily Backtest and Report Generation
+name: Daily Backtest and Deploy
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
-    inputs:
-      strategy:
-        description: '策略名称'
-        required: false
-        default: 'SMA'
-      symbol:
-        description: '交易标的'
-        required: false
-        default: 'HSI'
   push:
-    branches: [main]
+    branches: ["main"]
+  schedule:
+    - cron: '0 22 * * *'  # 每天 UTC 22:00 (台湾时间 06:00)
+  workflow_dispatch:  # 允许手动触发
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 jobs:
-  run-backtests:
+  run-backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     
     steps:
-    - name: Checkout Repository
+    - name: Checkout repository
       uses: actions/checkout@v4
     
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: "3.9"
+        cache: 'pip'
     
-    - name: Install Dependencies
+    - name: Install dependencies
       run: |
-        pip install yfinance pandas numpy
+        pip install --upgrade pip
+        pip install -r requirements.txt
     
-    - name: Create Directories
+    - name: Create output directories
       run: |
         mkdir -p public/reports
-        mkdir -p data/cache
     
-    - name: Generate Strategy Comparison CSV
+    - name: Run backtest
       run: |
-        echo "strategy,symbol,total_return,annual_return,sharpe_ratio,max_drawdown,win_rate,total_trades" > public/strategy_comparison.csv
-        echo "SMA,HSI,0.25,0.08,1.2,-0.12,0.55,15" >> public/strategy_comparison.csv
-        echo "RSI,SPY,0.18,0.06,0.9,-0.15,0.48,22" >> public/strategy_comparison.csv
-        echo "MACD,BTC-USD,0.22,0.07,1.1,-0.18,0.52,18" >> public/strategy_comparison.csv
-        echo "Bollinger,AAPL,0.15,0.05,0.8,-0.10,0.45,25" >> public/strategy_comparison.csv
-        echo "KDI,000001.SS,0.12,0.04,0.7,-0.08,0.42,20" >> public/strategy_comparison.csv
-    
-    - name: Generate HTML Report
-      run: |
-        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        echo "开始运行多策略回测..."
+        echo ""
+        python main.py
         
-        # 使用简单的变量和函数来生成HTML，避免复杂的多行字符串
-        HTML_CONTENT=$(cat <<-EOF
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>回测报告 - SMA策略 - 恒生指数</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
-        .header { text-align: center; margin-bottom: 40px; }
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-        .metric-card { background: #f9f9f9; padding: 20px; border-radius: 8px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📊 SMA策略回测报告</h1>
-            <p>标的：恒生指数 (HSI) | 期间：2023-01-01 至 2023-12-31</p>
-            <p>生成时间：$(date '+%Y-%m-%d %H:%M:%S')</p>
-        </div>
-        <div class="metrics-grid">
-            <div class="metric-card">
-                <h3>总收益率</h3>
-                <p style="color: #4CAF50; font-size: 24px; font-weight: bold;">25.00%</p>
-            </div>
-            <div class="metric-card">
-                <h3>年化收益率</h3>
-                <p style="color: #4CAF50; font-size: 24px; font-weight: bold;">8.00%</p>
-            </div>
-            <div class="metric-card">
-                <h3>夏普比率</h3>
-                <p style="font-size: 24px; font-weight: bold;">1.20</p>
-            </div>
-            <div class="metric-card">
-                <h3>最大回撤</h3>
-                <p style="color: #f44336; font-size: 24px; font-weight: bold;">12.00%</p>
-            </div>
-            <div class="metric-card">
-                <h3>胜率</h3>
-                <p style="font-size: 24px; font-weight: bold;">55.00%</p>
-            </div>
-            <div class="metric-card">
-                <h3>交易次数</h3>
-                <p style="font-size: 24px; font-weight: bold;">15</p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-EOF
-        )
+        echo ""
+        echo "检查生成的文件..."
+        echo "📁 生成的文件:"
+        find public -name "*.html" | head -10
+        echo ""
         
-        echo "$HTML_CONTENT" > "public/reports/SMA_HSI_${TIMESTAMP}.html"
-        echo "✅ 报告已生成: public/reports/SMA_HSI_${TIMESTAMP}.html"
+        if [ -f "public/index.html" ]; then
+          echo "✅ 主页面生成成功"
+          echo "📊 报告数量: $(find public/reports -name '*.html' | wc -l)"
+        else
+          echo "❌ 主页面生成失败"
+          exit 1
+        fi
     
-    - name: Generate Index HTML
-      run: |
-        CURRENT_DATE=$(date '+%Y-%m-%d %H:%M:%S')
-        cat > public/index.html << 'EOF'
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多策略回测系统</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
-        .navbar-brand { font-weight: bold; }
-        .card { border: none; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">多策略回测系统</a>
-            <span class="navbar-text" id="last-update">最后更新: __LAST_UPDATE__</span>
-        </div>
-    </nav>
-    <div class="container py-5">
-        <div class="text-center mb-5">
-            <h1 class="text-white mb-3">支持五种技术指标策略的回测系统</h1>
-            <p class="text-light lead">SMA双均线 | RSI超买超卖 | MACD交叉 | 布林带 | KDI随机指标</p>
-        </div>
-        <div class="row">
-            <div class="col-md-12">
-                <div class="card p-5 text-center">
-                    <h3>🏆 回测系统运行成功！</h3>
-                    <p>系统已自动生成最新的回测报告和策略对比数据。</p>
-                    <p>点击下方链接查看报告：</p>
-                    <div class="mt-4">
-                        <a href="./reports/" class="btn btn-primary btn-lg me-3">查看报告目录</a>
-                        <a href="./strategy_comparison.csv" class="btn btn-success btn-lg">下载对比数据</a>
-                    </div>
-                    <div class="mt-4">
-                        <div class="alert alert-info">
-                            <h5>当前支持策略：</h5>
-                            <p>SMA双均线策略、RSI超买超卖策略、MACD交叉策略、布林带策略、KDI随机指标策略</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script>
-        document.getElementById('last-update').textContent = '最后更新: __LAST_UPDATE__';
-    </script>
-</body>
-</html>
-EOF
-        
-        # 使用sed替换占位符
-        sed -i "s/__LAST_UPDATE__/${CURRENT_DATE}/g" public/index.html
-        echo "✅ index.html 已生成"
-    
-    - name: Upload Reports Artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
       with:
-        name: backtest-reports
-        path: |
-          public/reports/
-          public/strategy_comparison.csv
-          public/index.html
+        path: './public'
+  
+  deploy:
+    needs: run-backtest
+    if: success()
     
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      pages: write
+      id-token: write
+    
+    steps:
     - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./public
-        keep_files: false
-        force_orphan: true
+      id: deployment
+      uses: actions/deploy-pages@v4
+    
+    - name: Show deployment info
+      run: |
+        echo "🌐 部署完成!"
+        echo "网站地址: ${{ steps.deployment.outputs.page_url }}"
+        echo ""
+        echo "📋 使用方法:"
+        echo "1. 打开网站地址"
+        echo "2. 选择策略 (SMA/RSI/MACD/布林带/KDJ)"
+        echo "3. 选择股票标的"
+        echo "4. 点击'加载回测报告'"
+        echo "5. 查看图表和统计数据"
