@@ -1,21 +1,16 @@
-name: Daily Backtest and Deploy
+name: Backtest and Deploy
 
 on:
   push:
     branches: ["main"]
   schedule:
-    - cron: '0 22 * * *'  # 每天 UTC 22:00 (台湾时间 06:00)
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 22 * * *'  # 每天 UTC 22:00
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
-# 设置并发策略
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
 
 jobs:
   run-backtest:
@@ -31,69 +26,25 @@ jobs:
         python-version: "3.9"
         cache: 'pip'
     
-    - name: Cache Python dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
-        
-        # 验证安装
-        python -c "import pandas; import yfinance; print('✅ 依赖安装成功')"
     
-    - name: Create output directories
+    - name: Run backtest
       run: |
-        mkdir -p public/reports
-        echo "📁 目录结构已创建"
-    
-    - name: Run backtest system
-      id: backtest
-      run: |
-        echo "开始运行多策略回测系统..."
-        echo ""
-        
-        # 记录开始时间
-        start_time=$(date +%s)
-        
-        # 运行主程序
+        echo "开始运行回测..."
         python main.py
         
-        # 记录结束时间
-        end_time=$(date +%s)
-        duration=$((end_time - start_time))
+        echo "检查生成的文件..."
+        ls -la public/
+        ls -la public/reports/ || echo "reports目录可能不存在"
         
-        echo ""
-        echo "⏱️  运行时间: ${duration}秒"
-        echo ""
-        
-        # 检查生成的文件
         if [ -f "public/index.html" ]; then
           echo "✅ 主页面生成成功"
-          
-          # 统计报告数量
-          html_count=$(find public/reports -name "*.html" 2>/dev/null | wc -l || echo 0)
-          echo "📊 生成报告数量: $html_count个"
-          
-          # 列出部分报告
-          echo "📋 报告列表:"
-          find public/reports -name "*.html" 2>/dev/null | head -5 | sed 's/^/   - /'
-          
-          if [ $html_count -gt 5 ]; then
-            echo "   ... 更多报告"
-          fi
-          
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "duration=${duration}" >> $GITHUB_OUTPUT
-          echo "reports=${html_count}" >> $GITHUB_OUTPUT
+          echo "📊 报告数量: $(find public/reports -name '*.html' 2>/dev/null | wc -l || echo 0)"
         else
           echo "❌ 主页面生成失败"
-          echo "status=failed" >> $GITHUB_OUTPUT
           exit 1
         fi
     
@@ -101,15 +52,6 @@ jobs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: './public'
-    
-    - name: Upload Logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: backtest-logs
-        path: |
-          public/
-        retention-days: 7
   
   deploy:
     needs: run-backtest
@@ -130,104 +72,12 @@ jobs:
       id: deployment
       uses: actions/deploy-pages@v4
     
-    - name: Create deployment summary
-      run: |
-        echo "🌐 网站部署完成!"
-        echo ""
-        echo "### 📊 部署报告" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**部署状态:** ✅ 成功" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**运行信息:**" >> $GITHUB_STEP_SUMMARY
-        echo "- 运行时间: ${{ needs.run-backtest.outputs.duration }}秒" >> $GITHUB_STEP_SUMMARY
-        echo "- 生成报告: ${{ needs.run-backtest.outputs.reports }}个" >> $GITHUB_STEP_SUMMARY
-        echo "- 部署时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**🌐 访问地址:**" >> $GITHUB_STEP_SUMMARY
-        echo "[${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**📋 系统功能:**" >> $GITHUB_STEP_SUMMARY
-        echo "- 5大技术指标策略: SMA, RSI, MACD, 布林带, KDJ" >> $GITHUB_STEP_SUMMARY
-        echo "- 多市场支持: 美股、港股、指数" >> $GITHUB_STEP_SUMMARY
-        echo "- 完整回测报告: 图表 + 统计数据" >> $GITHUB_STEP_SUMMARY
-        echo "- 自动更新: 每天 UTC 22:00 自动运行" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "---" >> $GITHUB_STEP_SUMMARY
-        echo "*自动生成于 $(date -u +'%Y-%m-%d %H:%M:%S UTC')*" >> $GITHUB_STEP_SUMMARY
-        
-        # 创建部署状态文件
-        cat > public/deployment-status.json << EOF
-        {{
-          "status": "success",
-          "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
-          "url": "${{ steps.deployment.outputs.page_url }}",
-          "reports": ${{ needs.run-backtest.outputs.reports }},
-          "runtime": ${{ needs.run-backtest.outputs.duration }},
-          "commit": "${{ github.sha }}",
-          "run_id": "${{ github.run_id }}"
-        }}
-        EOF
-    
     - name: Show deployment URL
       run: |
-        echo ""
-        echo "========================================"
-        echo "🌐 多策略回测系统已部署!"
-        echo "========================================"
-        echo ""
-        echo "访问地址: ${{ steps.deployment.outputs.page_url }}"
+        echo "🌐 网站已部署: ${{ steps.deployment.outputs.page_url }}"
         echo ""
         echo "📋 使用方法:"
         echo "1. 打开上面的链接"
-        echo "2. 选择策略 (SMA/RSI/MACD/布林带/KDJ)"
-        echo "3. 选择股票标的"
-        echo "4. 点击'加载回测报告'"
-        echo "5. 查看完整的图表和统计数据"
-        echo ""
-        echo "💡 提示:"
-        echo "- 使用 Ctrl+Enter 快速加载报告"
-        echo "- 使用 Ctrl+S 快速下载完整报告"
-        echo "- 报告包含交互式图表和详细指标"
-        echo ""
-        echo "========================================"
-
-# 生成总结报告
-generate-summary:
-  needs: [run-backtest, deploy]
-  if: always()
-  runs-on: ubuntu-latest
-  
-  steps:
-  - name: Generate workflow summary
-    run: |
-      echo "# 📊 多策略回测系统 - 工作流报告" >> $GITHUB_STEP_SUMMARY
-      echo "" >> $GITHUB_STEP_SUMMARY
-      echo "## 🚀 执行概览" >> $GITHUB_STEP_SUMMARY
-      echo "- **工作流ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-      echo "- **触发方式:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-      echo "- **提交版本:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-      echo "- **运行时间:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-      echo "" >> $GITHUB_STEP_SUMMARY
-      
-      echo "## 📈 任务状态" >> $GITHUB_STEP_SUMMARY
-      echo "| 任务 | 状态 | 详情 |" >> $GITHUB_STEP_SUMMARY
-      echo "|------|------|------|" >> $GITHUB_STEP_SUMMARY
-      echo "| 运行回测 | ${{ needs.run-backtest.result }} | ${{ needs.run-backtest.outputs.duration }}秒, ${{ needs.run-backtest.outputs.reports }}个报告 |" >> $GITHUB_STEP_SUMMARY
-      echo "| 部署网站 | ${{ needs.deploy.result }} | ${{ steps.deployment.outputs.page_url }} |" >> $GITHUB_STEP_SUMMARY
-      echo "" >> $GITHUB_STEP_SUMMARY
-      
-      if [ "${{ needs.run-backtest.result }}" = "success" ]; then
-        echo "## 🎉 运行成功" >> $GITHUB_STEP_SUMMARY
-        echo "✅ 回测系统已成功运行并部署到 GitHub Pages" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**下次运行:**" >> $GITHUB_STEP_SUMMARY
-        echo "- 自动运行: 每天 UTC 22:00 (台湾时间 06:00)" >> $GITHUB_STEP_SUMMARY
-        echo "- 手动触发: 在 Actions 页面点击 'Run workflow'" >> $GITHUB_STEP_SUMMARY
-      else
-        echo "## ❌ 运行失败" >> $GITHUB_STEP_SUMMARY
-        echo "请检查日志获取详细错误信息" >> $GITHUB_STEP_SUMMARY
-      fi
-      
-      echo "" >> $GITHUB_STEP_SUMMARY
-      echo "---" >> $GITHUB_STEP_SUMMARY
-      echo "*报告生成于 $(date -u +'%Y-%m-%d %H:%M:%S UTC')*" >> $GITHUB_STEP_SUMMARY
+        echo "2. 选择策略和股票标的"
+        echo "3. 点击'加载回测报告'"
+        echo "4. 查看图表和统计数据"
