@@ -14,59 +14,47 @@ on:
         description: '交易标的'
         required: false
         default: 'HSI'
-  push:
-    branches: [ main ]
 
 permissions:
   contents: write
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
   run-backtests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
     
-    - name: Setup Pages
-      uses: actions/configure-pages@v5
-      
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Setup Python
+      uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-        cache: 'pip'
     
     - name: Install Dependencies
       run: |
-        python -m pip install --upgrade pip
         pip install yfinance pandas numpy
-        
-    - name: Create Required Directories
+    
+    - name: Create Directories
       run: |
         mkdir -p public/reports
         mkdir -p data/cache
-        
-    - name: Generate Mock Reports
+    
+    - name: Generate Strategy Comparison CSV
       run: |
-        # 创建模拟策略对比数据
         echo "strategy,symbol,total_return,annual_return,sharpe_ratio,max_drawdown,win_rate,total_trades" > public/strategy_comparison.csv
         echo "SMA,HSI,0.25,0.08,1.2,-0.12,0.55,15" >> public/strategy_comparison.csv
         echo "RSI,SPY,0.18,0.06,0.9,-0.15,0.48,22" >> public/strategy_comparison.csv
         echo "MACD,BTC-USD,0.22,0.07,1.1,-0.18,0.52,18" >> public/strategy_comparison.csv
-        
-        # 创建模拟报告文件
-        mkdir -p public/reports
+        echo "Bollinger,AAPL,0.15,0.05,0.8,-0.10,0.45,25" >> public/strategy_comparison.csv
+        echo "KDI,000001.SS,0.12,0.04,0.7,-0.08,0.42,20" >> public/strategy_comparison.csv
+    
+    - name: Generate HTML Report
+      run: |
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-        
-        # 创建HTML报告
         cat > public/reports/SMA_HSI_${TIMESTAMP}.html << 'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -106,18 +94,11 @@ jobs:
 </body>
 </html>
 EOF
-        
-        echo "✅ 模拟报告生成完成"
-        
-    - name: Update HTML with Current Date
+    
+    - name: Generate Index HTML
       run: |
-        # 更新index.html中的最后更新时间
         CURRENT_DATE=$(date '+%Y-%m-%d %H:%M:%S')
-        if [ -f public/index.html ]; then
-            sed -i "s/最后更新:.*/最后更新: ${CURRENT_DATE}/" public/index.html
-        else
-            # 如果index.html不存在，创建一个
-            cat > public/index.html << 'EOF'
+        cat > public/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -135,7 +116,7 @@ EOF
     <nav class="navbar navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="#">多策略回测系统</a>
-            <span class="navbar-text">最后更新: 2023-12-05 23:30:00</span>
+            <span class="navbar-text">最后更新: __LAST_UPDATE__</span>
         </div>
     </nav>
     <div class="container py-5">
@@ -160,12 +141,8 @@ EOF
 </body>
 </html>
 EOF
-            sed -i "s/最后更新:.*/最后更新: ${CURRENT_DATE}/" public/index.html
-        fi
-        
-    - name: Deploy to GitHub Pages
-      uses: actions/deploy-pages@v4
-      
+        sed -i "s/__LAST_UPDATE__/${CURRENT_DATE}/" public/index.html
+    
     - name: Upload Reports Artifact
       uses: actions/upload-artifact@v4
       with:
@@ -173,4 +150,11 @@ EOF
         path: |
           public/reports/
           public/strategy_comparison.csv
-        retention-days: 7
+          public/index.html
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./public
+        keep_files: false
