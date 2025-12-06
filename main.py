@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-# main.py – 多策略回测系统（SMA、RSI、MACD、布林带、KDJ）
-# 运行后生成：
-#   public/index.html               – 主页面
-#   public/reports/*.html           – 单个回测图表
-#   public/strategy_comparison.csv  – 汇总表格
-
+# main.py – 多策略回测系统（TA-Lib 版）
 import os
 import json
-import yfinance as yf
-import pandas as pd
 import numpy as np
+import pandas as pd
+import yfinance as yf
+import talib as ta
 from datetime import datetime
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
@@ -21,16 +17,9 @@ warnings.filterwarnings("ignore")
 # ------------------------------------------------------------------
 CONFIG = {
     "STOCKS": {
-        "^HSI": "恒生指数",
-        "0700.HK": "腾讯控股",
-        "9988.HK": "阿里巴巴",
-        "AAPL": "苹果",
-        "MSFT": "微软",
-        "GOOGL": "谷歌",
-        "TSLA": "特斯拉",
-        "NVDA": "英伟达",
-        "SPY": "标普500 ETF",
-        "QQQ": "纳指100 ETF",
+        "^HSI": "恒生指数", "0700.HK": "腾讯控股", "9988.HK": "阿里巴巴",
+        "AAPL": "苹果", "MSFT": "微软", "GOOGL": "谷歌",
+        "TSLA": "特斯拉", "NVDA": "英伟达", "SPY": "标普500 ETF", "QQQ": "纳指100 ETF",
     },
     "BACKTEST": {
         "start_date": "2022-01-01",
@@ -43,35 +32,26 @@ CONFIG = {
         "RSI": {"period": 14, "oversold": 30, "overbought": 70},
         "MACD": {"fast": 12, "slow": 26, "signal": 9},
         "BB": {"period": 20, "std_dev": 2},
-        "KDJ": {"period": 9, "k_period": 3, "d_period": 3},
+        "KDJ": {"kp": 14, "dp": 3},
     },
 }
 
 # ------------------------------------------------------------------
-# 2. 指标
+# 2. 指标（TA-Lib）
 # ------------------------------------------------------------------
-def sma(s, p): return s.rolling(p).mean()
-def ema(s, p): return s.ewm(span=p, adjust=False).mean()
-def rsi(s, p=14):
-    d = s.diff()
-    g = d.where(d > 0, 0).rolling(p).mean()
-    l = (-d.where(d < 0, 0)).rolling(p).mean()
-    rs = g / l
-    return 100 - (100 / (1 + rs))
-def macd(s, f=12, sl=26, sig=9):
-    ml = ema(s, f) - ema(s, sl)
-    sln = ema(ml, sig)
-    return ml, sln, ml - sln
-def bb(s, p=20, d=2):
-    m = sma(s, p)
-    std = s.rolling(p).std()
-    return m + std * d, m, m - std * d
-def kdj(h, l, c, kp=14, dp=3):
-    lo, hi = l.rolling(kp).min(), h.rolling(kp).max()
-    k = 100 * (c - lo) / (hi - lo).replace(0, 1)
-    d = k.rolling(dp).mean()
+def sma(close, n): return ta.SMA(close, n)
+def ema(close, n): return ta.EMA(close, n)
+def rsi(close, n=14): return ta.RSI(close, n)
+def macd(close, f=12, s=26, sig=9):
+    macd, signal, hist = ta.MACD(close, fastperiod=f, slowperiod=s, signalperiod=sig)
+    return macd, signal, hist
+def bbands(close, n=20, d=2):
+    upper, mid, lower = ta.BBANDS(close, n, d, d)
+    return upper, mid, lower
+def stochastic(high, low, close, kp=14, dp=3):
+    k, d = ta.STOCH(high, low, close, fastk_period=kp, slowk_period=dp, slowd_period=dp)
     j = 3 * k - 2 * d
-    return k.fillna(50), d.fillna(50), j.fillna(50)
+    return k, d, j
 
 # ------------------------------------------------------------------
 # 3. 策略
@@ -112,7 +92,7 @@ class BollingerBandsStrategy(Strategy):
     Name = "布林带策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["BB"]
-        upper, _, lower = self.I(bb, self.data.Close, p["period"], p["std_dev"])
+        upper, _, lower = self.I(bbands, self.data.Close, p["period"], p["std_dev"])
         self.u, self.l = upper, lower
     def next(self):
         price = self.data.Close[-1]
@@ -123,8 +103,8 @@ class KdjStrategy(Strategy):
     Name = "KDJ策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["KDJ"]
-        k, d, _ = self.I(kdj, self.data.High, self.data.Low, self.data.Close,
-                         p["period"], p["d_period"])
+        k, d, _ = self.I(stochastic, self.data.High, self.data.Low, self.data.Close,
+                         p["kp"], p["dp"])
         self.k, self.d = k, d
     def next(self):
         if crossover(self.k, self.d) and self.k[-1] < 20 and not self.position: self.buy()
@@ -136,7 +116,6 @@ class KdjStrategy(Strategy):
 def fetch(tic, start, end):
     try:
         df = yf.download(tic, start=start, end=end, progress=False, auto_adjust=True)
-        # 修复：MultiIndex → 普通列
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
@@ -144,6 +123,7 @@ def fetch(tic, start, end):
     except Exception as e:
         print(f" ❌ 下载失败 {tic}: {e}")
         return None
+
 def safe(tic): return tic.replace("^", "").replace(".", "_").replace("-", "_")
 
 # ------------------------------------------------------------------
@@ -176,7 +156,7 @@ def run_single(strategy_cls, tic, name):
 # 6. 主程序
 # ------------------------------------------------------------------
 def main():
-    print("📊 多策略回测系统")
+    print("📊 多策略回测系统（TA-Lib 版）")
     os.makedirs("public/reports", exist_ok=True)
     strategies = [SmaStrategy, RsiStrategy, MacdStrategy, BollingerBandsStrategy, KdjStrategy]
     results, records = {}, []
@@ -213,7 +193,7 @@ def main():
     print("\n✅ 全部完成！请打开 public/index.html 查看结果")
 
 # ------------------------------------------------------------------
-# 8. 生成主页
+# 7. 生成主页
 # ------------------------------------------------------------------
 def generate_html(results, out_dir):
     strategy_opts = "\n".join([f'<option value="{s}">{s}</option>' for s in results])
