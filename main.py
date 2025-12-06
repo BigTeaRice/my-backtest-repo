@@ -22,8 +22,8 @@ CONFIG = {
         "TSLA": "特斯拉", "NVDA": "英伟达", "SPY": "标普500 ETF", "QQQ": "纳指100 ETF",
     },
     "BACKTEST": {
-        "start_date": "2022-01-01",
-        "end_date": "2023-12-31",
+        "start_date": (datetime.today() - pd.DateOffset(years=2)).strftime("%Y-%m-%d"),
+        "end_date": datetime.today().strftime("%Y-%m-%d"),
         "initial_cash": 100_000,
         "commission": 0.002,
     },
