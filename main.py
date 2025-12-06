@@ -42,7 +42,7 @@ CONFIG = {
 def sma(close, n): return ta.SMA(close, n)
 def ema(close, n): return ta.EMA(close, n)
 def rsi(close, n=14): return ta.RSI(close, n)
-def macd(close, f=12, s=26, sig=9):
+def macd_ext(close, f=12, s=26, sig=9):
     macd, signal, hist = ta.MACD(close, fastperiod=f, slowperiod=s, signalperiod=sig)
     return macd, signal, hist
 def bbands(close, n=20, d=2):
@@ -82,11 +82,12 @@ class MacdStrategy(Strategy):
     Name = "MACD策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["MACD"]
-        macd, signal, _ = self.I(macd, self.data.Close, p["fast"], p["slow"], p["signal"])
-        self.m, self.s = macd, signal
+        macd_line, signal_line, _ = self.I(
+            macd_ext, self.data.Close, p["fast"], p["slow"], p["signal"])
+        self.macd, self.signal = macd_line, signal_line
     def next(self):
-        if crossover(self.m, self.s): self.buy()
-        elif crossover(self.s, self.m): self.position.close()
+        if crossover(self.macd, self.signal): self.buy()
+        elif crossover(self.signal, self.macd): self.position.close()
 
 class BollingerBandsStrategy(Strategy):
     Name = "布林带策略"
