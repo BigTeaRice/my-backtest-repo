@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # main.py – 多策略回测系统（SMA、RSI、MACD、布林带、KDJ）
+# 运行后生成：
+#   public/index.html               – 主页面
+#   public/reports/*.html           – 单个回测图表
+#   public/strategy_comparison.csv  – 汇总表格
+
 import os
 import json
 import yfinance as yf
@@ -131,6 +136,9 @@ class KdjStrategy(Strategy):
 def fetch(tic, start, end):
     try:
         df = yf.download(tic, start=start, end=end, progress=False, auto_adjust=True)
+        # 修复：MultiIndex → 普通列
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
         return None if len(df) < 30 else df
     except Exception as e:
@@ -205,7 +213,7 @@ def main():
     print("\n✅ 全部完成！请打开 public/index.html 查看结果")
 
 # ------------------------------------------------------------------
-# 7. 生成主页
+# 8. 生成主页
 # ------------------------------------------------------------------
 def generate_html(results, out_dir):
     strategy_opts = "\n".join([f'<option value="{s}">{s}</option>' for s in results])
