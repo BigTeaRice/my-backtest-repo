@@ -1,3 +1,21 @@
+name: Daily Backtest and Deploy
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    - cron: '0 22 * * *'  # UTC 22:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  run-backtest:
+    runs-on: ubuntu-latest
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -27,3 +45,50 @@
       run: |
         pip install --upgrade pip
         pip install -r requirements.txt
+
+    # 4. 创建输出目录
+    - name: Create output directories
+      run: mkdir -p public/reports
+
+    # 5. 运行回测
+    - name: Run backtest
+      run: |
+        echo "开始运行多策略回测（TA-Lib 版）..."
+        python main.py
+
+    # 6. 列出生成文件（调试用）
+    - name: List generated files
+      run: |
+        echo "📊 生成的报告文件："
+        find public -name "*.html" | head -10
+        echo "📊 CSV 报告："
+        ls -l public/*.csv
+
+    # 7. 上传 GitHub Pages 构件
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './public'
+
+  deploy:
+    needs: run-backtest
+    if: success()
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+    - name: Show deployment info
+      run: |
+        echo "🌐 部署完成！"
+        echo "网站地址：${{ steps.deployment.outputs.page_url }}"
