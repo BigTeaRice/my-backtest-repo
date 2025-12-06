@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-# main.py  – 多策略回测系统（SMA、RSI、MACD、布林带、KDJ）
-# 运行后会生成：
-#   public/index.html               – 主页面
-#   public/reports/*.html           – 单个回测图表
-#   public/strategy_comparison.csv  – 汇总表格
-
+# main.py – 多策略回测系统（SMA、RSI、MACD、布林带、KDJ）
 import os
 import json
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
 import warnings
@@ -48,35 +43,28 @@ CONFIG = {
 }
 
 # ------------------------------------------------------------------
-# 2. 指标函数
+# 2. 指标
 # ------------------------------------------------------------------
-def calculate_sma(series, period): return series.rolling(period).mean()
-def calculate_ema(series, period): return series.ewm(span=period, adjust=False).mean()
-
-def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(period).mean()
-    rs = gain / loss
+def sma(s, p): return s.rolling(p).mean()
+def ema(s, p): return s.ewm(span=p, adjust=False).mean()
+def rsi(s, p=14):
+    d = s.diff()
+    g = d.where(d > 0, 0).rolling(p).mean()
+    l = (-d.where(d < 0, 0)).rolling(p).mean()
+    rs = g / l
     return 100 - (100 / (1 + rs))
-
-def calculate_macd(series, fast=12, slow=26, signal=9):
-    ema_fast = calculate_ema(series, fast)
-    ema_slow = calculate_ema(series, slow)
-    macd_line = ema_fast - ema_slow
-    signal_line = calculate_ema(macd_line, signal)
-    return macd_line, signal_line, macd_line - signal_line
-
-def calculate_bollinger_bands(series, period=20, std_dev=2):
-    sma = calculate_sma(series, period)
-    std = series.rolling(period).std()
-    return sma + std * std_dev, sma, sma - std * std_dev
-
-def calculate_stochastic(high, low, close, k_period=14, d_period=3):
-    lowest = low.rolling(k_period).min()
-    highest = high.rolling(k_period).max()
-    k = 100 * ((close - lowest) / (highest - lowest).replace(0, 1))
-    d = k.rolling(d_period).mean()
+def macd(s, f=12, sl=26, sig=9):
+    ml = ema(s, f) - ema(s, sl)
+    sln = ema(ml, sig)
+    return ml, sln, ml - sln
+def bb(s, p=20, d=2):
+    m = sma(s, p)
+    std = s.rolling(p).std()
+    return m + std * d, m, m - std * d
+def kdj(h, l, c, kp=14, dp=3):
+    lo, hi = l.rolling(kp).min(), h.rolling(kp).max()
+    k = 100 * (c - lo) / (hi - lo).replace(0, 1)
+    d = k.rolling(dp).mean()
     j = 3 * k - 2 * d
     return k.fillna(50), d.fillna(50), j.fillna(50)
 
@@ -87,51 +75,50 @@ class SmaStrategy(Strategy):
     Name = "SMA策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["SMA"]
-        fast = self.I(calculate_sma, self.data.Close, p["fast"])
-        slow = self.I(calculate_sma, self.data.Close, p["slow"])
-        self.signal_buy = crossover(fast, slow)
-        self.signal_sell = crossover(slow, fast)
+        fast = self.I(sma, self.data.Close, p["fast"])
+        slow = self.I(sma, self.data.Close, p["slow"])
+        self.buy_sig = crossover(fast, slow)
+        self.sell_sig = crossover(slow, fast)
     def next(self):
-        if self.signal_buy: self.buy()
-        elif self.signal_sell: self.position.close()
+        if self.buy_sig: self.buy()
+        elif self.sell_sig: self.position.close()
 
 class RsiStrategy(Strategy):
     Name = "RSI策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["RSI"]
-        self.rsi = self.I(calculate_rsi, self.data.Close, p["period"])
-        self.oversold = p["oversold"]
-        self.overbought = p["overbought"]
+        self.r = self.I(rsi, self.data.Close, p["period"])
+        self.o, self.b = p["overbought"], p["oversold"]
     def next(self):
-        if self.rsi[-1] < self.oversold and not self.position: self.buy()
-        elif self.rsi[-1] > self.overbought and self.position: self.position.close()
+        if self.r[-1] < self.b and not self.position: self.buy()
+        elif self.r[-1] > self.o and self.position: self.position.close()
 
 class MacdStrategy(Strategy):
     Name = "MACD策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["MACD"]
-        macd, signal, _ = self.I(calculate_macd, self.data.Close, p["fast"], p["slow"], p["signal"])
-        self.macd, self.signal = macd, signal
+        macd, signal, _ = self.I(macd, self.data.Close, p["fast"], p["slow"], p["signal"])
+        self.m, self.s = macd, signal
     def next(self):
-        if crossover(self.macd, self.signal): self.buy()
-        elif crossover(self.signal, self.macd): self.position.close()
+        if crossover(self.m, self.s): self.buy()
+        elif crossover(self.s, self.m): self.position.close()
 
 class BollingerBandsStrategy(Strategy):
     Name = "布林带策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["BB"]
-        upper, middle, lower = self.I(calculate_bollinger_bands, self.data.Close, p["period"], p["std_dev"])
-        self.upper, self.lower = upper, lower
+        upper, _, lower = self.I(bb, self.data.Close, p["period"], p["std_dev"])
+        self.u, self.l = upper, lower
     def next(self):
         price = self.data.Close[-1]
-        if price < self.lower[-1] and not self.position: self.buy()
-        elif price > self.upper[-1] and self.position: self.position.close()
+        if price < self.l[-1] and not self.position: self.buy()
+        elif price > self.u[-1] and self.position: self.position.close()
 
 class KdjStrategy(Strategy):
     Name = "KDJ策略"
     def init(self):
         p = CONFIG["STRATEGY_PARAMS"]["KDJ"]
-        k, d, j = self.I(calculate_stochastic, self.data.High, self.data.Low, self.data.Close,
+        k, d, _ = self.I(kdj, self.data.High, self.data.Low, self.data.Close,
                          p["period"], p["d_period"])
         self.k, self.d = k, d
     def next(self):
@@ -141,48 +128,41 @@ class KdjStrategy(Strategy):
 # ------------------------------------------------------------------
 # 4. 工具
 # ------------------------------------------------------------------
-def download(ticker, start, end):
+def fetch(tic, start, end):
     try:
-        df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
+        df = yf.download(tic, start=start, end=end, progress=False, auto_adjust=True)
         df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
         return None if len(df) < 30 else df
     except Exception as e:
-        print(f" ❌ 下載失敗 {ticker}: {e}")
+        print(f" ❌ 下载失败 {tic}: {e}")
         return None
-
-def safe_name(ticker):
-    return ticker.replace("^", "").replace(".", "_").replace("-", "_")
+def safe(tic): return tic.replace("^", "").replace(".", "_").replace("-", "_")
 
 # ------------------------------------------------------------------
-# 5. 回測
+# 5. 回测
 # ------------------------------------------------------------------
-def run(strategy_class, ticker, name):
-    df = download(ticker, CONFIG["BACKTEST"]["start_date"], CONFIG["BACKTEST"]["end_date"])
+def run_single(strategy_cls, tic, name):
+    df = fetch(tic, CONFIG["BACKTEST"]["start_date"], CONFIG["BACKTEST"]["end_date"])
     if df is None: return None
-
-    bt = Backtest(df, strategy_class,
+    bt = Backtest(df, strategy_cls,
                   cash=CONFIG["BACKTEST"]["initial_cash"],
                   commission=CONFIG["BACKTEST"]["commission"])
     stats = bt.run()
-
-    # 保存圖表
     os.makedirs("public/reports", exist_ok=True)
-    report_file = f"reports/{strategy_class.Name}_{safe_name(ticker)}.html"
-    bt.plot(filename=f"public/{report_file}", open_browser=False, plot_volume=False)
-
-    # 統計
+    report_path = f"reports/{strategy_cls.Name}_{safe(tic)}.html"
+    bt.plot(filename=f"public/{report_path}", open_browser=False, plot_volume=False)
     stats_dict = {k: v for k, v in stats.items() if isinstance(v, (int, float, str)) and not k.startswith('_')}
     stats_dict.update({
         "标的名称": name,
-        "标的代码": ticker,
-        "策略名称": strategy_class.Name,
+        "标的代码": tic,
+        "策略名称": strategy_cls.Name,
         "数据起点": str(df.index[0].date()),
         "数据终点": str(df.index[-1].date()),
         "数据条数": len(df),
         "初始资金": CONFIG["BACKTEST"]["initial_cash"],
         "手续费率": CONFIG["BACKTEST"]["commission"],
     })
-    return {"file": report_file, "stats": stats_dict}
+    return {"file": report_path, "stats": stats_dict}
 
 # ------------------------------------------------------------------
 # 6. 主程序
@@ -198,7 +178,7 @@ def main():
         results[st.Name] = {}
         for tic, name in CONFIG["STOCKS"].items():
             print(f"  {name} ({tic}) ...", end="")
-            ret = run(st, tic, name)
+            ret = run_single(st, tic, name)
             if ret:
                 results[st.Name][tic] = ret
                 records.append({
@@ -218,17 +198,14 @@ def main():
             else:
                 print(" ❌")
 
-    # CSV
     if records:
         pd.DataFrame(records).sort_values("夏普比率", ascending=False).to_csv("public/strategy_comparison.csv", index=False, encoding="utf-8-sig")
         print("\n📊 已生成 strategy_comparison.csv")
-
-    # HTML
     generate_html(results, "public")
-    print("\n✅ 全部完成！請打開 public/index.html 查看結果")
+    print("\n✅ 全部完成！请打开 public/index.html 查看结果")
 
 # ------------------------------------------------------------------
-# 7. 生成主頁
+# 7. 生成主页
 # ------------------------------------------------------------------
 def generate_html(results, out_dir):
     strategy_opts = "\n".join([f'<option value="{s}">{s}</option>' for s in results])
@@ -238,14 +215,8 @@ def generate_html(results, out_dir):
         df = pd.read_csv("public/strategy_comparison.csv")
         if not df.empty:
             b = df.iloc[0]
-            best = f"""
-<div class="recommendations">
-  <h3>🏆 最佳組合</h3>
-  <p><strong>{b['策略']} + {b['标的名称']}</strong></p>
-  <p>夏普 {b['夏普比率']:.2f} | 年化 {b['年化收益%']:.1f}% | 回撤 {b['最大回撤%']:.1f}%</p>
-</div>"""
+            best = f'<div class="recommendations"><h3>🏆 最佳组合</h3><p><strong>{b["策略"]} + {b["标的名称"]}</strong></p><p>夏普 {b["夏普比率"]:.2f} | 年化 {b["年化收益%"]:.1f}% | 回撤 {b["最大回撤%"]:.1f}%</p></div>'
     except: pass
-
     results_json = json.dumps(results, ensure_ascii=False)
     html = f"""<!DOCTYPE html>
 <html lang="zh">
@@ -288,7 +259,7 @@ select{{padding:8px 12px; font-size:16px}}
 </div>
 <script>
 const DATA = {results_json};
-function loadReport() {
+function loadReport() {{
   const s = document.getElementById('strategy').value;
   const t = document.getElementById('stock').value;
   const item = DATA[s]?.[t];
@@ -297,7 +268,7 @@ function loadReport() {
   const st = item.stats;
   const rows = [
     ['标的名称', st['标的名称']],
-    ['数据期间', `${st['数据起点']} 至 ${st['数据终点']}`],
+    ['数据期间', `${{st['数据起点']}} 至 ${{st['数据终点']}}`],
     ['总收益率', (st['Return [%]'] || 0).toFixed(2) + '%'],
     ['年化收益率', (st['Return (Ann.) [%]'] || 0).toFixed(2) + '%'],
     ['夏普比率', (st['Sharpe Ratio'] || 0).toFixed(2)],
@@ -305,11 +276,10 @@ function loadReport() {
     ['交易次数', st['# Trades']],
     ['胜率', (st['Win Rate [%]'] || 0).toFixed(1) + '%'],
   ];
-  document.getElementById('stats').innerHTML = rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-}
-function downloadCSV() { window.open('strategy_comparison.csv', '_blank'); }
-// 默认加载第一个
-window.onload = () => { document.querySelector('button').click(); };
+  document.getElementById('stats').innerHTML = rows.map(([k,v])=>`<tr><td>${{k}}</td><td>${{v}}</td></tr>`).join('');
+}}
+function downloadCSV() {{ window.open('strategy_comparison.csv', '_blank'); }}
+window.onload = () => document.querySelector('button').click();
 </script>
 </body>
 </html>"""
