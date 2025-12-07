@@ -194,7 +194,7 @@ def main():
     print("\n✅ 全部完成！请打开 public/index.html 查看结果")
 
 # ------------------------------------------------------------------
-# 7. 生成主页
+# 7. 生成主页（含「技術分析連結」「AI連結」）
 # ------------------------------------------------------------------
 def generate_html(results, out_dir):
     strategy_opts = "\n".join([f'<option value="{s}">{s}</option>' for s in results])
@@ -207,6 +207,15 @@ def generate_html(results, out_dir):
             best = f'<div class="recommendations"><h3>🏆 最佳组合</h3><p><strong>{b["策略"]} + {b["标的名称"]}</strong></p><p>夏普 {b["夏普比率"]:.2f} | 年化 {b["年化收益%"]:.1f}% | 回撤 {b["最大回撤%"]:.1f}%</p></div>'
     except: pass
     results_json = json.dumps(results, ensure_ascii=False)
+
+    # 新增两个外部链接按钮
+    ext_links = """
+    <div class="ext-links" style="margin-top:12px;display:flex;gap:12px;justify-content:center">
+        <a class="btn btn-secondary" href="https://bigtearice.github.io/repo-root/" target="_blank">📊 技術分析連結</a>
+        <a class="btn btn-secondary" href="https://bigtearice.github.io/stock-ai-analysis/" target="_blank">🤖 AI連結</a>
+    </div>
+    """
+
     html = f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -215,10 +224,12 @@ def generate_html(results, out_dir):
 <style>
 body{{font-family:system-ui, sans-serif; margin:0; background:#f2f6ff}}
 .header{{background:#0d47a1; color:white; padding:30px; text-align:center}}
-.controls{{display:flex; gap:15px; justify-content:center; padding:20px; background:#e3f2fd}}
+.controls{{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; padding:20px; background:#e3f2fd}}
 select{{padding:8px 12px; font-size:16px}}
-.btn{{padding:10px 20px; background:#0d47a1; color:white; border:none; border-radius:4px; cursor:pointer}}
+.btn{{padding:10px 20px; background:#0d47a1; color:white; border:none; border-radius:4px; cursor:pointer; text-decoration:none}}
 .btn:hover{{opacity:.9}}
+.btn-secondary{{background:#6c757d}} /* 灰色副按钮 */
+.ext-links{{width:100%; margin-top:12px}}
 .content{{display:grid; grid-template-columns:1fr 350px; gap:20px; padding:20px}}
 .chart-frame{{width:100%; height:700px; border:1px solid #ddd; background:white}}
 .stats-sidebar{{background:white; padding:20px; border:1px solid #ddd; border-radius:6px}}
@@ -235,8 +246,9 @@ select{{padding:8px 12px; font-size:16px}}
 <div class="controls">
   <select id="strategy">{strategy_opts}</select>
   <select id="stock">{stock_opts}</select>
-  <button class="btn" onclick="loadReport()">加载回测报告</button>
-  <button class="btn" onclick="downloadCSV()">下载完整 CSV</button>
+  <button class="btn" onclick="loadReport()">📈 加载回测报告</button>
+  <button class="btn" onclick="downloadCSV()">📥 下载完整 CSV</button>
+  {ext_links}
 </div>
 <div class="content">
   <iframe id="chart" class="chart-frame" title="回测图表" src="about:blank"></iframe>
