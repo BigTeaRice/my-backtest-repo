@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# main.py – 多策略回测系统（TA-Lib 版）
+# main.py – 多策略回测系统（TA-Lib 版 | GitHub Pages 子路径修正）
+# 1. 股票列表外部 stocks.json 动态加载
+# 2. 回测日期自动最近2年
+# 3. iframe 路径已修正为 /my-backtest-repo/reports/xxx.html，避免 404
+
 import os
 import json
 import numpy as np
@@ -13,14 +17,18 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ------------------------------------------------------------------
-# 1. 配置
+# 0. 动态加载股票列表
+# ------------------------------------------------------------------
+def load_stocks():
+    path = os.path.join(os.path.dirname(__file__), "stocks.json")
+    with open(path, "r", encoding="utf-8") as f:
+        return {item["ticker"]: item["name"] for item in json.load(f)}
+
+# ------------------------------------------------------------------
+# 1. 配置（动态日期 & 动态股票）
 # ------------------------------------------------------------------
 CONFIG = {
-    "STOCKS": {
-        "^HSI": "恒生指数", "0700.HK": "腾讯控股", "9988.HK": "阿里巴巴",
-        "AAPL": "苹果", "MSFT": "微软", "GOOGL": "谷歌",
-        "TSLA": "特斯拉", "NVDA": "英伟达", "SPY": "标普500 ETF", "QQQ": "纳指100 ETF",
-    },
+    "STOCKS": load_stocks(),
     "BACKTEST": {
         "start_date": (datetime.today() - pd.DateOffset(years=2)).strftime("%Y-%m-%d"),
         "end_date": datetime.today().strftime("%Y-%m-%d"),
@@ -157,7 +165,7 @@ def run_single(strategy_cls, tic, name):
 # 6. 主程序
 # ------------------------------------------------------------------
 def main():
-    print("📊 多策略回测系统（TA-Lib 版）")
+    print("📊 多策略回测系统（TA-Lib 版 | 动态股票列表）")
     os.makedirs("public/reports", exist_ok=True)
     strategies = [SmaStrategy, RsiStrategy, MacdStrategy, BollingerBandsStrategy, KdjStrategy]
     results, records = {}, []
@@ -194,7 +202,7 @@ def main():
     print("\n✅ 全部完成！请打开 public/index.html 查看结果")
 
 # ------------------------------------------------------------------
-# 7. 生成主页（含「技術分析連結」「AI連結」）
+# 7. 生成主页（已修正 GitHub Pages 子路径 + 外部链接）
 # ------------------------------------------------------------------
 def generate_html(results, out_dir):
     strategy_opts = "\n".join([f'<option value="{s}">{s}</option>' for s in results])
@@ -208,7 +216,7 @@ def generate_html(results, out_dir):
     except: pass
     results_json = json.dumps(results, ensure_ascii=False)
 
-    # 新增两个外部链接按钮
+    # 外部链接按钮
     ext_links = """
     <div class="ext-links" style="margin-top:12px;display:flex;gap:12px;justify-content:center">
         <a class="btn btn-secondary" href="https://bigtearice.github.io/repo-root/" target="_blank">📊 技術分析連結</a>
@@ -216,6 +224,7 @@ def generate_html(results, out_dir):
     </div>
     """
 
+    # 修正 iframe 路径：加上 /my-backtest-repo/ 前缀，避免 404
     html = f"""<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -265,7 +274,8 @@ function loadReport() {{
   const t = document.getElementById('stock').value;
   const item = DATA[s]?.[t];
   if (!item) return alert('未找到报告');
-  document.getElementById('chart').src = item.file;
+  // 修正：加上 /my-backtest-repo/ 前缀，避免 404
+  document.getElementById('chart').src = '/my-backtest-repo/' + item.file;
   const st = item.stats;
   const rows = [
     ['标的名称', st['标的名称']],
@@ -279,7 +289,7 @@ function loadReport() {{
   ];
   document.getElementById('stats').innerHTML = rows.map(([k,v])=>`<tr><td>${{k}}</td><td>${{v}}</td></tr>`).join('');
 }}
-function downloadCSV() {{ window.open('strategy_comparison.csv', '_blank'); }}
+function downloadCSV() {{ window.open('/my-backtest-repo/strategy_comparison.csv', '_blank'); }}
 window.onload = () => document.querySelector('button').click();
 </script>
 </body>
