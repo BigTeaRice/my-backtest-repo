@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-# main.py – 多策略回测系统（TA-Lib 版 | GitHub Pages 子路径修正）
+# main.py – 多策略回测系统（Polygon 数据源 | GitHub Pages 子路径修正）
 # 1. 股票列表外部 stocks.json 动态加载
 # 2. 回测日期自动最近2年
 # 3. iframe 路径已修正为 /my-backtest-repo/reports/xxx.html，避免 404
 
 import os
 import json
-import numpy as np
 import pandas as pd
-import yfinance as yf
-import talib as ta
-from datetime import datetime
+import numpy as np
+from datetime import datetime, timedelta
+from polygon import RESTClient
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
 import warnings
@@ -30,7 +29,7 @@ def load_stocks():
 CONFIG = {
     "STOCKS": load_stocks(),
     "BACKTEST": {
-        "start_date": (datetime.today() - pd.DateOffset(years=2)).strftime("%Y-%m-%d"),
+        "start_date": (datetime.today() - timedelta(days=730)).strftime("%Y-%m-%d"),
         "end_date": datetime.today().strftime("%Y-%m-%d"),
         "initial_cash": 100_000,
         "commission": 0.002,
@@ -45,8 +44,40 @@ CONFIG = {
 }
 
 # ------------------------------------------------------------------
-# 2. 指标（TA-Lib）
+# 2. Polygon 数据源（替代 yfinance）
 # ------------------------------------------------------------------
+POLYGON_API_KEY = "rIC6V4eePMISAUW9JZ0W1fVTL71E6DHD"   # ← 换成你的 Polygon API Key
+client = RESTClient(POLYGON_API_KEY)
+
+def polygon_daily(ticker, start, end):
+    """返回与 yfinance 格式一致的 DataFrame"""
+    resp = client.get_aggs(ticker, 1, "day", start, end)
+    if not resp:
+        return None
+    df = pd.DataFrame([{
+        "Open":  r.open,
+        "High":  r.high,
+        "Low":   r.low,
+        "Close": r.close,
+        "Volume": r.volume,
+        "Date":  pd.to_datetime(r.timestamp, unit="ms")
+    } for r in resp])
+    df.set_index("Date", inplace=True)
+    return df
+
+def fetch(tic, start, end):
+    """统一入口：Polygon → Backtest 格式"""
+    df = polygon_daily(tic, start, end)
+    if df is None or len(df) < 30:
+        return None
+    return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+def safe(tic): return tic.replace("^", "").replace(".", "_").replace("-", "_")
+
+# ------------------------------------------------------------------
+# 3. 指标（TA-Lib）
+# ------------------------------------------------------------------
+import talib as ta
 def sma(close, n): return ta.SMA(close, n)
 def ema(close, n): return ta.EMA(close, n)
 def rsi(close, n=14): return ta.RSI(close, n)
@@ -62,7 +93,7 @@ def stochastic(high, low, close, kp=14, dp=3):
     return k, d, j
 
 # ------------------------------------------------------------------
-# 3. 策略
+# 4. 策略
 # ------------------------------------------------------------------
 class SmaStrategy(Strategy):
     Name = "SMA策略"
@@ -120,27 +151,12 @@ class KdjStrategy(Strategy):
         elif crossover(self.d, self.k) and self.k[-1] > 80 and self.position: self.position.close()
 
 # ------------------------------------------------------------------
-# 4. 工具
-# ------------------------------------------------------------------
-def fetch(tic, start, end):
-    try:
-        df = yf.download(tic, start=start, end=end, progress=False, auto_adjust=True)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].dropna()
-        return None if len(df) < 30 else df
-    except Exception as e:
-        print(f" ❌ 下载失败 {tic}: {e}")
-        return None
-
-def safe(tic): return tic.replace("^", "").replace(".", "_").replace("-", "_")
-
-# ------------------------------------------------------------------
 # 5. 回测
 # ------------------------------------------------------------------
 def run_single(strategy_cls, tic, name):
     df = fetch(tic, CONFIG["BACKTEST"]["start_date"], CONFIG["BACKTEST"]["end_date"])
-    if df is None: return None
+    if df is None:
+        return None
     bt = Backtest(df, strategy_cls,
                   cash=CONFIG["BACKTEST"]["initial_cash"],
                   commission=CONFIG["BACKTEST"]["commission"])
@@ -165,7 +181,7 @@ def run_single(strategy_cls, tic, name):
 # 6. 主程序
 # ------------------------------------------------------------------
 def main():
-    print("📊 多策略回测系统（TA-Lib 版 | 动态股票列表）")
+    print("📊 多策略回测系统（Polygon 数据源 | 动态股票列表）")
     os.makedirs("public/reports", exist_ok=True)
     strategies = [SmaStrategy, RsiStrategy, MacdStrategy, BollingerBandsStrategy, KdjStrategy]
     results, records = {}, []
