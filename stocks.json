@@ -1,7 +1,7 @@
 [
-  {"ticker": "^HSI",  "name": "恒生指数"},
-  {"ticker": "0700.HK", "name": "腾讯控股"},
-  {"ticker": "AAPL", "name": "苹果"},
-  {"ticker": "TSLA", "name": "特斯拉"},
-  {"ticker": "SPY",  "name": "标普500 ETF"}
+  {"ticker": "SPY",  "name": "标普500 ETF"},
+  {"ticker": "QQQ",  "name": "纳指100 ETF"},
+  {"ticker": "GLD",  "name": "黄金ETF"},
+  {"ticker": "TLT",  "name": "20年美债ETF"},
+  {"ticker": "VTI",  "name": "美股总市ETF"}
 ]
