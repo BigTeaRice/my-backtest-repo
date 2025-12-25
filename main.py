@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-# main.py – 多策略回测系统（Polygon 数据源 | GitHub Pages 子路径修正）
+# main.py – 多策略回测系统（Polygon 数据源 + 限速重试 | GitHub Pages 子路径修正）
 # 1. 股票列表外部 stocks.json 动态加载
 # 2. 回测日期自动最近2年
 # 3. iframe 路径已修正为 /my-backtest-repo/reports/xxx.html，避免 404
 
 import os
 import json
+import time
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from polygon import RESTClient
+from polygon import RESTClient, NoResultsError, BadResponse
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
 import warnings
@@ -44,26 +45,36 @@ CONFIG = {
 }
 
 # ------------------------------------------------------------------
-# 2. Polygon 数据源（替代 yfinance）
+# 2. Polygon 数据源（限速重试版，免费 tier 通用）
 # ------------------------------------------------------------------
 POLYGON_API_KEY = "rIC6V4eePMISAUW9JZ0W1fVTL71E6DHD"   # ← 换成你的 Polygon API Key
 client = RESTClient(POLYGON_API_KEY)
 
 def polygon_daily(ticker, start, end):
-    """返回与 yfinance 格式一致的 DataFrame"""
-    resp = client.get_aggs(ticker, 1, "day", start, end)
-    if not resp:
-        return None
-    df = pd.DataFrame([{
-        "Open":  r.open,
-        "High":  r.high,
-        "Low":   r.low,
-        "Close": r.close,
-        "Volume": r.volume,
-        "Date":  pd.to_datetime(r.timestamp, unit="ms")
-    } for r in resp])
-    df.set_index("Date", inplace=True)
-    return df
+    """限速 + 重试版：免费 tier 通用"""
+    for attempt in range(5):          # 最多 5 次重试
+        try:
+            resp = client.get_aggs(ticker, 1, "day", start, end)
+            if not resp:
+                return None
+            df = pd.DataFrame([{
+                "Open":  r.open,
+                "High":  r.high,
+                "Low":   r.low,
+                "Close": r.close,
+                "Volume": r.volume,
+                "Date":  pd.to_datetime(r.timestamp, unit="ms")
+            } for r in resp])
+            df.set_index("Date", inplace=True)
+            return df
+        except (NoResultsError, BadResponse) as e:
+            if "exceeded the maximum requests per minute" in str(e):
+                print(f"⚠️  Polygon 限速，{2 ** attempt}s 后重试...")
+                time.sleep(2 ** attempt)   # 指数退避
+                continue
+            # 其他错误（无数据、权限）直接返回 None
+            return None
+    return None
 
 def fetch(tic, start, end):
     """统一入口：Polygon → Backtest 格式"""
@@ -181,7 +192,7 @@ def run_single(strategy_cls, tic, name):
 # 6. 主程序
 # ------------------------------------------------------------------
 def main():
-    print("📊 多策略回测系统（Polygon 数据源 | 动态股票列表）")
+    print("📊 多策略回测系统（Polygon 数据源 + 限速重试 | 动态股票列表）")
     os.makedirs("public/reports", exist_ok=True)
     strategies = [SmaStrategy, RsiStrategy, MacdStrategy, BollingerBandsStrategy, KdjStrategy]
     results, records = {}, []
@@ -212,7 +223,7 @@ def main():
                 print(" ❌")
 
     if records:
-        pd.DataFrame(records).sort_values("夏普比率", ascending=False).to_csv("public/strategy_comparison.csv", index=False, encoding="utf-8-sig")
+        pd.DataFrame(records).sort_values("夏普比率", ascending=False).to_csv("public/strategy_comparison.csv", index=False, encoding='utf-8-sig')
         print("\n📊 已生成 strategy_comparison.csv")
     generate_html(results, "public")
     print("\n✅ 全部完成！请打开 public/index.html 查看结果")
